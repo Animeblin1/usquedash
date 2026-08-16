@@ -47,20 +47,20 @@ grep -q "^200 warp" /etc/iproute2/rt_tables || echo "200 warp" >> /etc/iproute2/
 
 P=$PRIO_MIN
 while [ "$P" -le "$PRIO_MAX" ]; do
-	ip rule show 2>/dev/null | grep -E "(table|lookup) warp priority ${P}" | awk '{print $3}' | while read -r R; do
+	ip rule show 2>/dev/null | grep -E "^${P}:|priority ${P}" | awk '{print $3}' | while read -r R; do
 		ip rule del from "$R" table warp priority "$P" 2>/dev/null
 		iptables -t nat -D PREROUTING -s "$R" -j RETURN 2>/dev/null
 	done
 	P=$((P + 1))
 done
 
-ip rule show 2>/dev/null | grep -E "(table|lookup) main priority ${PRIO_MAIN}" | awk '{print $3}' | while read -r R; do
+ip rule show 2>/dev/null | grep -E "^${PRIO_MAIN}:|priority ${PRIO_MAIN}" | awk '{print $3}' | while read -r R; do
 	ip rule del from "$R" table main priority "$PRIO_MAIN" 2>/dev/null
 	iptables -t nat -D PREROUTING -s "$R" -j RETURN 2>/dev/null
 done
 
 if [ "$MANAGE_WHOL" = "1" ] && [ -n "$SUBNET" ]; then
-	ip rule show 2>/dev/null | grep -E "(table|lookup) warp priority ${PRIO_WHOL}" | awk '{print $3}' | while read -r R; do
+	ip rule show 2>/dev/null | grep -E "^${PRIO_WHOL}:|priority ${PRIO_WHOL}" | awk '{print $3}' | while read -r R; do
 		ip rule del from "$R" table warp priority "$PRIO_WHOL" 2>/dev/null
 	done
 	iptables -t nat -D PREROUTING -s "$SUBNET" -j RETURN 2>/dev/null

@@ -37,7 +37,7 @@ BYEDPI_STRATEGY=""
 WHOL_STATE="unmanaged"
 [ -f /etc/warp-wholelan ] && WHOL_STATE=$(cat /etc/warp-wholelan 2>/dev/null)
 WHOL_RULE="no"
-ip rule show 2>/dev/null | grep -q "priority 80" && WHOL_RULE="yes"
+ip rule show 2>/dev/null | grep -Eq "^80:|priority 80" && WHOL_RULE="yes"
 
 WATCHDOG_LOG=""
 [ -f /var/log/usque-watchdog.log ] && WATCHDOG_LOG=$(tail -20 /var/log/usque-watchdog.log | json_escape)

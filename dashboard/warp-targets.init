@@ -9,7 +9,7 @@ start() {
 stop() {
 	P=150
 	while [ "$P" -le 199 ]; do
-		RULE=$(ip rule show 2>/dev/null | grep "table warp priority ${P}" | awk '{print $3}')
+		RULE=$(ip rule show 2>/dev/null | grep -E "^${P}:|priority ${P}" | awk '{print $3}')
 		if [ -n "$RULE" ]; then
 			ip rule del from "$RULE" table warp priority "$P" 2>/dev/null
 			iptables -t nat -D PREROUTING -s "$RULE" -j RETURN 2>/dev/null
