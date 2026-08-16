@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WARP Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",Roboto,sans-serif;background:#0d1117;color:#e6edf3;font-size:14px}
+header{background:#161b22;border-bottom:1px solid #30363d;padding:12px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+header h1{font-size:18px;color:#58a6ff}
+header .sys{margin-left:auto;color:#8b949e;font-size:12px}
+.tabs{display:flex;gap:4px;background:#161b22;padding:0 16px;border-bottom:1px solid #30363d}
+.tabs button{background:none;border:none;color:#8b949e;padding:10px 16px;font-size:14px;cursor:pointer;border-bottom:2px solid transparent}
+.tabs button.active{color:#e6edf3;border-bottom-color:#58a6ff}
+main{padding:16px;max-width:1100px;margin:0 auto}
+.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:12px}
+.card h3{color:#58a6ff;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.kv{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #21262d}
+.kv:last-child{border-bottom:none}
+.kv .k{color:#8b949e}
+pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:8px;font-size:12px;overflow:auto;max-height:220px;margin-top:6px;white-space:pre-wrap;word-break:break-all}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600}
+.badge.ok{background:#1f6feb33;color:#58a6ff}
+.badge.bad{background:#da363322;color:#f85149}
+.badge.grey{background:#30363d;color:#8b949e}
+button.btn{background:#238636;border:none;color:#fff;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;margin:3px}
+button.btn:hover{background:#2ea043}
+button.btn.grey{background:#30363d}
+button.btn.grey:hover{background:#3d444d}
+button.btn.red{background:#da3633}
+button.btn.red:hover{background:#f85149}
+button.btn:disabled{opacity:.5;cursor:default}
+input[type=text],input[type=password],textarea{background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:7px 10px;font-size:14px;width:100%;margin:4px 0}
+textarea{min-height:160px;font-family:monospace;font-size:12px}
+label{color:#8b949e;font-size:12px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #21262d;font-size:13px}
+th{color:#8b949e;font-weight:600}
+a{color:#58a6ff}
+#loginOverlay{position:fixed;inset:0;background:#0d1117f2;display:flex;align-items:center;justify-content:center;z-index:100}
+#loginBox{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:28px;width:320px;text-align:center}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 18px;display:none;z-index:200;max-width:80%;box-shadow:0 4px 16px #0008}
+#toast.show{display:block}
+.muted{color:#8b949e;font-size:12px;line-height:1.6}
+.flexrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.flexrow input[type=text]{flex:1;min-width:200px}
+</style>
+</head>
+<body>
+<div id="loginOverlay">
+	<div id="loginBox">
+		<h3 style="color:#58a6ff;margin-bottom:14px">Вход в дашборд</h3>
+		<input type="password" id="loginPass" placeholder="Пароль">
+		<button class="btn" id="loginBtn" style="width:100%;margin-top:8px">Войти</button>
+		<p class="muted" style="margin-top:12px">Пароль один раз сохраняется в браузере. Забыл пароль — <code>rm /etc/dashboard-password.hash</code> в SSH и переустанови дашборд.</p>
+	</div>
+</div>
+
+<header>
+	<h1>WARP Router Dashboard</h1>
+	<div class="tabs" style="margin-left:auto">
+		<button id="tab-status" class="active">Статус</button>
+		<button id="tab-targets">WARP-цели</button>
+		<button id="tab-backups">Бэкапы</button>
+		<button id="tab-clash">Clash-конфиг</button>
+	</div>
+</header>
+
+<main>
+<div id="view-status">
+	<div class="grid">
+		<div class="card">
+			<h3>usque (WARP/MASQUE) <span id="usque-badge"></span></h3>
+			<div class="kv"><span class="k">Статус</span><span id="usque-status">-</span></div>
+			<div class="kv"><span class="k">PID</span><span id="usque-pid">-</span></div>
+			<div class="kv"><span class="k">Автозагрузка</span><span id="usque-autostart">-</span></div>
+			<div class="flexrow" style="margin-top:8px">
+				<button class="btn" onclick="doAction('restart_usque')">Рестарт usque</button>
+			</div>
+		</div>
+		<div class="card">
+			<h3>Туннель tun0</h3>
+			<div class="kv"><span class="k">Состояние</span><span id="tun-status">-</span></div>
+			<pre id="tun-stats">-</pre>
+		</div>
+		<div class="card">
+			<h3>ByeDPI</h3>
+			<div class="kv"><span class="k">Процессы</span><span id="byedpi-count">-</span></div>
+			<div class="kv"><span class="k">Автозагрузка</span><span id="byedpi-enabled">-</span></div>
+			<div class="flexrow" style="margin-top:8px">
+				<button class="btn" onclick="doAction('restart_byedpi')">Рестарт ByeDPI</button>
+				<button class="btn" onclick="doAction('enable_byedpi')">Включить</button>
+				<button class="btn red" onclick="doAction('disable_byedpi')">Выключить</button>
+			</div>
+		</div>
+		<div class="card">
+			<h3>Watchdog</h3>
+			<div class="kv"><span class="k">Cron активен</span><span id="wd-cron">-</span></div>
+			<div class="kv"><span class="k">Цели-крон (5 мин)</span><span id="tg-cron">-</span></div>
+			<pre id="wd-log">-</pre>
+		</div>
+		<div class="card">
+			<h3>Система</h3>
+			<div class="kv"><span class="k">Аптайм</span><span id="sys-uptime">-</span></div>
+			<div class="kv"><span class="k">Память</span><span id="sys-mem">-</span></div>
+			<div class="kv"><span class="k">/overlay</span><span id="sys-overlay">-</span></div>
+			<div class="flexrow" style="margin-top:8px">
+				<button class="btn grey" onclick="doAction('restart_dnsmasq')">Сброс DNS</button>
+				<button class="btn red" onclick="confirmReboot()">Перезагрузка роутера</button>
+			</div>
+		</div>
+		<div class="card">
+			<h3>WARP routing</h3>
+			<pre id="warp-rules">-</pre>
+			<pre id="warp-routes">-</pre>
+			<div class="flexrow" style="margin-top:8px">
+				<button class="btn" onclick="doAction('apply_targets')">Применить цели заново</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div id="view-targets" style="display:none">
+	<div class="card">
+		<h3>Добавить цель WARP</h3>
+		<p class="muted">IP устройства (<code>192.168.1.50</code>) или домен (<code>youtube.com</code>). Домен разрешится в IP автоматически.</p>
+		<div class="flexrow">
+			<input type="text" id="tg-target" placeholder="IP или домен">
+			<input type="text" id="tg-label" placeholder="Метка (необязательно)">
+			<button class="btn" onclick="addTarget()">Добавить</button>
+		</div>
+	</div>
+	<div class="card">
+		<h3>Список целей</h3>
+		<table>
+			<thead><tr><th>IP</th><th>Метка</th><th>Источник</th><th>Статус</th><th></th></tr></thead>
+			<tbody id="tg-table"><tr><td colspan="5" class="muted">загрузка...</td></tr></tbody>
+		</table>
+	</div>
+</div>
+
+<div id="view-backups" style="display:none">
+	<div class="card">
+		<h3>Бэкапы конфигов</h3>
+		<p class="muted">В бэкап входят: config.json WARP, init-скрипты, список целей, cron, правила iptables. Бинарники не входят.</p>
+		<button class="btn" onclick="createBackup()">Создать бэкап</button>
+	</div>
+	<div class="card">
+		<h3>Список бэкапов</h3>
+		<table>
+			<thead><tr><th>Имя</th><th>Размер</th><th>Дата</th><th></th></tr></thead>
+			<tbody id="bk-table"><tr><td colspan="4" class="muted">загрузка...</td></tr></tbody>
+		</table>
+	</div>
+</div>
+
+<div id="view-clash" style="display:none">
+	<div class="card">
+		<h3>Импорт конфига с warp-gen.github.io</h3>
+		<p class="muted">1. Зайди на <a href="https://warp-gen.github.io/" target="_blank">warp-gen.github.io</a>.<br>
+		2. Раздел <b>Clash</b>, тип <b>Masque</b> — скачай yaml-файл (типа ClashWARP_93.yaml).<br>
+		3. Открой его в блокноте, скопируй ВСЁ содержимое и вставь в поле ниже.<br>
+		4. Нажми «Импортировать». Дашборд сам переведёт его в <code>/etc/usque/config.json</code> (ключи, IP, endpoint, SNI) — останется только перезапустить usque.</p>
+		<textarea id="clash-text" placeholder="Вставь сюда содержимое yaml-файла Clash (Masque)..."></textarea>
+		<div class="flexrow">
+			<button class="btn" onclick="importClash()">Импортировать</button>
+			<button class="btn grey" onclick="doAction('restart_usque')">Перезапустить usque после импорта</button>
+		</div>
+	</div>
+</div>
+</main>
+
+<div id="toast"></div>
+<script>
+const API='cgi-bin';
+let S=null;
+let pass=localStorage.getItem('dash_password')||'';
+
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function badge(ok,text){return '<span class="badge '+(ok?'ok':'bad')+'">'+esc(text)+'</span>'}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)}
+
+function headers(){return pass?{'X-Password':pass}:{}}
+
+async function fetchJSON(url){
+	const r=await fetch(url,{headers:headers()});
+	return r.json();
+}
+
+async function doAction(action){
+	const btn=event&&event.target; if(btn){btn.disabled=true}
+	const d=await fetchJSON(API+'/dash-action.sh?action='+action);
+	if(btn){btn.disabled=false}
+	toast(d.message||d.error||'ок');
+	if(action==='apply_targets') setTimeout(loadStatus,1000);
+	if(action==='restart_usque') setTimeout(loadStatus,5000);
+}
+
+async function loadStatus(){
+	try{
+		const d=await fetchJSON(API+'/dash-status.sh');
+		S=d;
+		document.getElementById('usque-badge').innerHTML=badge(d.usque.status==='running',d.usque.status);
+		document.getElementById('usque-status').textContent=d.usque.status;
+		document.getElementById('usque-pid').textContent=d.usque.pid||'-';
+		document.getElementById('usque-autostart').textContent=d.usque.autostart;
+		document.getElementById('tun-status').textContent=d.tunnel.status;
+		document.getElementById('tun-stats').textContent=d.tunnel.stats||'-';
+		document.getElementById('byedpi-count').textContent=d.byedpi.process_count;
+		document.getElementById('byedpi-enabled').textContent=d.byedpi.enabled;
+		document.getElementById('wd-cron').innerHTML=d.watchdog.cron_active==='yes'?badge(true,'активен'):badge(false,'нет');
+		document.getElementById('tg-cron').innerHTML=d.targets_cron_active==='yes'?badge(true,'активен'):badge(false,'нет');
+		document.getElementById('wd-log').textContent=d.watchdog.log||'(лога пока нет - падений не было)';
+		document.getElementById('sys-uptime').textContent=d.uptime;
+		document.getElementById('sys-mem').textContent=d.memory;
+		document.getElementById('sys-overlay').textContent=d.overlay;
+		document.getElementById('warp-rules').textContent=d.warp.rules||'(пусто)';
+		document.getElementById('warp-routes').textContent=d.warp.routes||'(пусто)';
+		renderTargets(d.targets||[]);
+		renderBackups();
+	}catch(e){toast('ошибка статуса: '+e.message)}
+}
+
+function renderTargets(list){
+	const tb=document.getElementById('tg-table');
+	if(!list.length){tb.innerHTML='<tr><td colspan="5" class="muted">целей нет - добавь ниже</td></tr>';return}
+	tb.innerHTML=list.map(t=>
+		'<tr><td>'+esc(t.ip)+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td>'+
+		'<td>'+(t.status==='active'?badge(true,'в WARP'):badge(false,'ожидает'))+'</td>'+
+		'<td><button class="btn grey" onclick="refreshTarget(\''+t.ip+'\')">Обновить</button> '+
+		'<button class="btn red" onclick="removeTarget(\''+t.ip+'\')">Убрать</button></td></tr>'
+	).join('');
+}
+
+async function addTarget(){
+	const t=document.getElementById('tg-target').value.trim();
+	const l=document.getElementById('tg-label').value.trim();
+	if(!t){toast('введи IP или домен');return}
+	const d=await fetchJSON(API+'/dash-target-add.sh?target='+encodeURIComponent(t)+'&label='+encodeURIComponent(l));
+	toast(d.message||d.error);
+	if(d.ok){document.getElementById('tg-target').value='';loadStatus()}
+}
+
+async function removeTarget(ip){
+	if(!confirm('Убрать '+ip+' из WARP?'))return
+	const d=await fetchJSON(API+'/dash-target-remove.sh?ip='+ip);
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+async function refreshTarget(ip){
+	const d=await fetchJSON(API+'/dash-target-refresh.sh?ip='+ip);
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+async function createBackup(){
+	const d=await fetchJSON(API+'/dash-backup-create.sh');
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+async function renderBackups(){
+	try{
+		const d=await fetchJSON(API+'/dash-backup-list.sh');
+		const tb=document.getElementById('bk-table');
+		if(!d.backups||!d.backups.length){tb.innerHTML='<tr><td colspan="4" class="muted">бэкапов нет</td></tr>';return}
+		tb.innerHTML=d.backups.map(b=>
+			'<tr><td>'+esc(b.name)+'</td><td>'+esc(b.size)+'</td><td>'+esc(b.date)+'</td><td>'+
+			'<a class="btn grey" style="text-decoration:none" href="'+API+'/dash-backup-download.sh?name='+encodeURIComponent(b.name)+'&password='+encodeURIComponent(pass)+'">Скачать</a> '+
+			'<button class="btn" onclick="restoreBackup(\''+b.name+'\')">Восстановить</button> '+
+			'<button class="btn red" onclick="deleteBackup(\''+b.name+'\')">Удалить</button></td></tr>'
+		).join('');
+	}catch(e){}
+}
+
+async function restoreBackup(name){
+	if(!confirm('Восстановить конфиги из '+name+'? Текущие будут перезаписаны.'))return
+	const d=await fetchJSON(API+'/dash-backup-restore.sh?name='+encodeURIComponent(name));
+	toast(d.message||d.error);
+	if(d.ok)setTimeout(loadStatus,3000);
+}
+
+async function deleteBackup(name){
+	if(!confirm('Удалить бэкап '+name+'?'))return
+	const d=await fetchJSON(API+'/dash-backup-delete.sh?name='+encodeURIComponent(name));
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+async function importClash(){
+	const yaml=document.getElementById('clash-text').value;
+	if(!yaml.trim()){toast('вставь содержимое yaml-файла');return}
+	const r=await fetch(API+'/dash-import-clash.sh',{method:'POST',headers:headers(),body:yaml});
+	const d=await r.json();
+	toast(d.message||d.error);
+	if(d.ok){document.getElementById('clash-text').value=''}
+}
+
+function confirmReboot(){
+	if(confirm('ТОЧНО перезагрузить роутер? Соединение пропадёт на минуту-две.')){
+		doAction('reboot_router');
+		setTimeout(loadStatus,30000);
+	}
+}
+
+function showTab(id){
+	['status','targets','backups','clash'].forEach(t=>{
+		document.getElementById('view-'+t).style.display=(t===id)?'':'none';
+		document.getElementById('tab-'+t).classList.toggle('active',t===id);
+	});
+	if(id==='targets'||id==='backups')loadStatus();
+}
+
+document.getElementById('tab-status').onclick=()=>showTab('status');
+document.getElementById('tab-targets').onclick=()=>showTab('targets');
+document.getElementById('tab-backups').onclick=()=>showTab('backups');
+document.getElementById('tab-clash').onclick=()=>showTab('clash');
+
+document.getElementById('loginBtn').onclick=()=>{
+	pass=document.getElementById('loginPass').value;
+	localStorage.setItem('dash_password',pass);
+	document.getElementById('loginOverlay').style.display='none';
+	loadStatus();
+};
+document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('loginBtn').click()});
+
+(async function init(){
+	if(pass){
+		try{
+			const d=await fetchJSON(API+'/dash-status.sh');
+			document.getElementById('loginOverlay').style.display='none';
+			loadStatus();
+			return;
+		}catch(e){}
+	}
+	document.getElementById('loginOverlay').style.display='flex';
+})();
+
+setInterval(loadStatus,5000);
+</script>
+</body>
+</html>

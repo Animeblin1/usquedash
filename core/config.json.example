@@ -1,0 +1,11 @@
+{
+  "private_key": "ВАШ_PRIVATE_KEY_ИЗ_CLASH_КОНФИГА_КАК_ЕСТЬ_BASE64",
+  "endpoint_v4": "162.159.198.2",
+  "endpoint_v6": "2606:4700:d0::a29f:c602",
+  "endpoint_pub_key": "-----BEGIN PUBLIC KEY-----\nВАШ_PUBLIC_KEY_ОБЁРНУТЫЙ_В_PEM\n-----END PUBLIC KEY-----",
+  "license": "",
+  "id": "",
+  "access_token": "",
+  "ipv4": "172.16.0.2",
+  "ipv6": "2606:4700:110:8340:60db:9326:975a:e4f0"
+}
