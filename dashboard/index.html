@@ -142,9 +142,9 @@ a{color:#58a6ff}
 	</div>
 	<div class="card">
 		<h3>Добавить цель</h3>
-		<p class="muted">IP устройства (<code>192.168.1.50</code>) или домен (<code>youtube.com</code>). Режим: <b>WARP</b> — через туннель, <b>ByeDPI</b> — через десинхронизацию (только при выключенном WholeLAN), <b>Direct</b> — мимо всего.</p>
+		<p class="muted">IP устройства (<code>192.168.1.50</code>), домен (<code>youtube.com</code>), суффикс со всеми поддоменами (<code>*.youtube.com</code>) или регэксп (<code>/^(.*\.)?discord\.gg$/</code>). Режим: <b>WARP</b> — через туннель, <b>ByeDPI</b> — через десинхронизацию (только при выключенном WholeLAN), <b>Direct</b> — мимо всего.</p>
 		<div class="flexrow">
-			<input type="text" id="tg-target" placeholder="IP или домен">
+			<input type="text" id="tg-target" placeholder="IP, домен, *.домен или /регэксп/">
 			<input type="text" id="tg-label" placeholder="Метка (необязательно)">
 			<select id="tg-mode">
 				<option value="warp">WARP</option>
@@ -152,6 +152,9 @@ a{color:#58a6ff}
 				<option value="direct">Direct</option>
 			</select>
 			<button class="btn" onclick="addTarget()">Добавить</button>
+		</div>
+		<div class="flexrow" style="margin-top:8px">
+			<button class="btn grey" onclick="addPresets()">Добавить популярные: YouTube, Discord, Instagram</button>
 		</div>
 	</div>
 	<div class="card">
@@ -325,7 +328,8 @@ function renderTargets(list){
 	if(!list.length){tb.innerHTML='<tr><td colspan="6" class="muted">целей нет - добавь ниже</td></tr>';return}
 	tb.innerHTML=list.map(t=>{
 		const mb=t.mode==='byedpi'?'<span class="badge grey">ByeDPI</span>':t.mode==='direct'?'<span class="badge grey">Direct</span>':'<span class="badge ok">WARP</span>';
-		return '<tr><td>'+esc(t.ip)+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td><td>'+mb+'</td>'+
+		const tb2=t.type==='suffix'?'<span class="badge grey">*.'+esc(t.src.replace(/^\./,''))+'</span>':t.type==='regex'?'<span class="badge grey">/'+esc(t.src)+'/</span>':t.type==='domain'?'<span class="badge grey">домен</span>':'';
+		return '<tr><td>'+esc(t.ip)+tb2+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td><td>'+mb+'</td>'+
 		'<td>'+(t.status==='active'?badge(true,'активна'):badge(false,'ожидает'))+'</td>'+
 		'<td><button class="btn grey" onclick="cycleMode(\''+t.ip+'\',\''+t.mode+'\')">Режим</button> '+
 		'<button class="btn grey" onclick="editTarget(\''+t.ip+'\')">Изменить</button> '+
@@ -438,13 +442,20 @@ async function byedpiStrategy(s){
 }
 
 async function addTarget(){
-	const t=document.getElementById('tg-target').value.trim();
-	const l=document.getElementById('tg-label').value.trim();
-	const m=document.getElementById('tg-mode').value;
-	if(!t){toast('введи IP или домен');return}
-	const d=await fetchJSON(API+'/dash-target-add.sh?target='+encodeURIComponent(t)+'&label='+encodeURIComponent(l)+'&mode='+m);
+	const target=document.getElementById('tg-target').value.trim();
+	if(!target){toast('введи IP, домен, *.домен или /регэксп/');return}
+	const label=document.getElementById('tg-label').value.trim();
+	const mode=document.getElementById('tg-mode').value;
+	const d=await fetchJSON(API+'/dash-target-add.sh?target='+encodeURIComponent(target)+'&label='+encodeURIComponent(label)+'&mode='+mode);
 	toast(d.message||d.error);
 	if(d.ok){document.getElementById('tg-target').value='';loadStatus()}
+}
+
+async function addPresets(){
+	if(!confirm('Добавить в WARP все поддомены YouTube (youtube.com, googlevideo.com, ytimg.com), Discord (discord.com, discord.gg, discordapp.com, discordapp.net) и Instagram (instagram.com, instagr.am, cdninstagram.com)?'))return;
+	const d=await fetchJSON(API+'/dash-preset-add.sh');
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
 }
 
 async function removeTarget(ip){

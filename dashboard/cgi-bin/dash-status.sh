@@ -55,19 +55,31 @@ CLASH_IMPORTER="no"
 TARGETS_JSON=""
 FIRST=1
 if [ -f /etc/warp-targets.conf ]; then
-	while IFS='|' read -r ip label src mode; do
+	while IFS='|' read -r ip label src mode type; do
 		[ -z "$ip" ] && continue
 		case "$ip" in \#*) continue ;; esac
 		[ -z "$mode" ] && mode="warp"
-		if ip rule show 2>/dev/null | grep -q "from ${ip} "; then
-			ST="active"
-		else
-			ST="pending"
-		fi
+		[ -z "$type" ] && type="ip"
+		case "$type" in
+			suffix|regex)
+				if grep -qF "ipset=/${ip}/" /etc/dnsmasq.d/usque-ipset.conf 2>/dev/null; then
+					ST="active"
+				else
+					ST="pending"
+				fi
+				;;
+			*)
+				if ip rule show 2>/dev/null | grep -q "from ${ip} "; then
+					ST="active"
+				else
+					ST="pending"
+				fi
+				;;
+		esac
 		IP_J=$(echo "$ip" | json_escape)
 		LABEL_J=$(echo "$label" | json_escape)
 		SRC_J=$(echo "$src" | json_escape)
-		ITEM="{\"ip\":\"${IP_J}\",\"label\":\"${LABEL_J}\",\"src\":\"${SRC_J}\",\"mode\":\"${mode}\",\"status\":\"${ST}\"}"
+		ITEM="{\"ip\":\"${IP_J}\",\"label\":\"${LABEL_J}\",\"src\":\"${SRC_J}\",\"mode\":\"${mode}\",\"type\":\"${type}\",\"status\":\"${ST}\"}"
 		if [ "$FIRST" = "1" ]; then TARGETS_JSON="$ITEM"; FIRST=0; else TARGETS_JSON="${TARGETS_JSON},${ITEM}"; fi
 	done < /etc/warp-targets.conf
 fi

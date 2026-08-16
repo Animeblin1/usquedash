@@ -16,6 +16,8 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 		mode) MODE="$val" ;;
 	esac
 done
+IP="$(urldecode "$IP")"
+MODE="$(urldecode "$MODE")"
 
 if ! is_valid_ip "$IP"; then
 	echo '{"ok":false,"error":"некорректный IP"}'

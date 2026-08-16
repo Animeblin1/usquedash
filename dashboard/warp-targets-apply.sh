@@ -17,16 +17,28 @@
 #            direct  - плюс RETURN от ByeDPI (мимо WARP и мимо REDIRECT)
 #            byedpi  - без RETURN: tcp 443/80 уходит в REDIRECT ByeDPI:1081
 #   80     - wholelan: from SUBNET lookup warp (+RETURN от ByeDPI для всей LAN)
+#   85     - домен-суффиксы/регэкспы в режиме warp: fwmark 0x8 lookup warp
+#            (ipset warp-ips наполняет dnsmasq по ipset=/домен/warp-ips)
+#            direct/byedpi-суффиксы: mark 0x9 (идут в main через правило 70)
 #   150-199 - warp цели: from IP lookup warp (+RETURN от ByeDPI)
 # Правила 90/100 (ручные) и все остальные - не трогаются.
 # Если tun0 не поднят - молча выходит (применится позже по крону).
+#
+# Формат conf: IP|МЕТКА|ИСТОЧНИК|РЕЖИМ[|ТИП]
+#   ТИП (пусто = по ИСТОЧНИКУ): ip | domain | suffix | regex
+#   suffix: IP-поле = ".youtube.com" (ведущая точка)
+#   regex:  IP-поле = "^(.*\.)?discord\.gg$" (без обрамляющих слэшей)
 #
 CONF="/etc/warp-targets.conf"
 LOG="/var/log/warp-targets.log"
 PRIO_MAIN=75
 PRIO_WHOL=80
+PRIO_MARK=85
 PRIO_MIN=150
 PRIO_MAX=199
+DNS_CONF="/etc/dnsmasq.d/usque-ipset.conf"
+IPSET_WARP="warp-ips"
+IPSET_BYPASS="bypass-ips"
 
 [ -f /etc/warp-lan.conf ] && . /etc/warp-lan.conf
 if [ -z "$SUBNET" ] || [ -z "$IFACE" ]; then
@@ -67,16 +79,37 @@ if [ "$MANAGE_WHOL" = "1" ] && [ -n "$SUBNET" ]; then
 	iptables -t nat -D PREROUTING -s "$SUBNET" -j RETURN 2>/dev/null
 fi
 
+# --- delete-фаза домен-суффиксов/регэкспов (ipset + fwmark + dnsmasq) ---
+ip rule del fwmark 0x8 table warp priority "$PRIO_MARK" 2>/dev/null
+iptables -t mangle -D PREROUTING -i "$IFACE" -m set --match-set "$IPSET_WARP" dst -j MARK --set-xmark 0x8/0xffffffff 2>/dev/null
+iptables -t mangle -D PREROUTING -i "$IFACE" -m set --match-set "$IPSET_BYPASS" dst -j MARK --set-xmark 0x9/0xffffffff 2>/dev/null
+rm -f "$DNS_CONF"
+
 if [ ! -f "$CONF" ]; then
 	exit 0
 fi
 
 P=$PRIO_MIN
-while IFS='|' read -r ip label src mode; do
+while IFS='|' read -r ip label src mode type; do
 	[ -z "$ip" ] && continue
 	case "$ip" in
 		\#*) continue ;;
 		*) ;;
+	esac
+	case "$type" in
+		suffix|regex)
+			case "$mode" in
+				warp)
+					echo "ipset=/${ip}/${IPSET_WARP}" >> "$DNS_CONF"
+					USE_WARP=1
+					;;
+				direct|byedpi)
+					echo "ipset=/${ip}/${IPSET_BYPASS}" >> "$DNS_CONF"
+					USE_BYPASS=1
+					;;
+			esac
+			continue
+			;;
 	esac
 	case "$mode" in
 		direct|byedpi)
@@ -94,6 +127,25 @@ while IFS='|' read -r ip label src mode; do
 			;;
 	esac
 done < "$CONF"
+
+# --- add-фаза домен-суффиксов/регэкспов ---
+if [ -f "$DNS_CONF" ]; then
+	mkdir -p /etc/dnsmasq.d
+	grep -q "^conf-dir=/etc/dnsmasq.d/$" /etc/dnsmasq.conf || echo "conf-dir=/etc/dnsmasq.d/" >> /etc/dnsmasq.conf
+	if [ "$USE_WARP" = "1" ]; then
+		ipset -exist create "$IPSET_WARP" hash:ip
+		iptables -t mangle -A PREROUTING -i "$IFACE" -m set --match-set "$IPSET_WARP" dst -j MARK --set-xmark 0x8/0xffffffff
+		ip rule add fwmark 0x8 table warp priority "$PRIO_MARK" 2>/dev/null
+	fi
+	if [ "$USE_BYPASS" = "1" ]; then
+		ipset -exist create "$IPSET_BYPASS" hash:ip
+		iptables -t mangle -A PREROUTING -i "$IFACE" -m set --match-set "$IPSET_BYPASS" dst -j MARK --set-xmark 0x9/0xffffffff
+	fi
+	if ! cmp -s "$DNS_CONF" /tmp/usque-ipset.conf.old 2>/dev/null; then
+		cp "$DNS_CONF" /tmp/usque-ipset.conf.old
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1 || kill -HUP "$(pidof dnsmasq)" 2>/dev/null
+	fi
+fi
 
 if [ "$MANAGE_WHOL" = "1" ] && [ "$WHOL" = "1" ] && [ -n "$SUBNET" ]; then
 	ip rule add from "$SUBNET" table warp priority "$PRIO_WHOL" 2>/dev/null

@@ -44,3 +44,20 @@ is_safe_filename() {
 		*) return 0 ;;
 	esac
 }
+
+urldecode() {
+	STR=$(echo "$1" | sed 's/+/ /g; s/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g')
+	printf '%b' "$STR"
+}
+
+conf_has_key() {
+	awk -F'|' -v k="$1" '$1==k{print "YES"}' "$2"
+}
+
+is_valid_regex() {
+	[ -z "$1" ] && return 1
+	[ "${#1}" -gt 64 ] && return 1
+	R=$(printf '%s' "$1" | tr -d 'A-Za-z0-9._()|^$+*?{}\\-')
+	[ -z "$R" ] && return 0
+	return 1
+}

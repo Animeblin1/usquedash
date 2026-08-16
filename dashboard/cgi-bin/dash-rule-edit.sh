@@ -19,6 +19,10 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 		lookup) LOOKUP="$val" ;;
 	esac
 done
+PRIO="$(urldecode "$PRIO")"
+NPRIO="$(urldecode "$NPRIO")"
+FROM="$(urldecode "$FROM")"
+LOOKUP="$(urldecode "$LOOKUP")"
 
 echo "$PRIO" | grep -qE '^[0-9]{1,5}$' || {
 	echo '{"ok":false,"error":"некорректный приоритет"}'

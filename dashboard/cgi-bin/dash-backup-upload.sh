@@ -16,6 +16,7 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 	val=${kv#*=}
 	[ "$key" = "name" ] && NAME="$val"
 done
+NAME="$(urldecode "$NAME")"
 if ! is_safe_filename "$NAME" || [ -z "$NAME" ]; then
 	echo '{"ok":false,"error":"некорректное имя файла"}'
 	exit 0

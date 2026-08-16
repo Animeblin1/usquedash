@@ -21,7 +21,11 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 	esac
 done
 
-if ! is_valid_ip "$IP" || ! grep -q "^${IP}|" "$CONF" 2>/dev/null; then
+IP="$(urldecode "$IP")"
+LABEL="$(urldecode "$LABEL")"
+SRC="$(urldecode "$SRC")"
+
+if [ -z "$IP" ] || [ ! -f "$CONF" ] || [ "$(conf_has_key "$IP" "$CONF")" != "YES" ]; then
 	echo '{"ok":false,"error":"цель не найдена"}'
 	exit 0
 fi
@@ -37,14 +41,20 @@ if ! is_valid_label "$LABEL"; then
 fi
 
 if [ -z "$SRC" ]; then
-	SRC=$(grep "^${IP}|" "$CONF" | head -1 | cut -d'|' -f3)
+	SRC=$(awk -F'|' -v k="$IP" '$1==k{print $3; exit}' "$CONF")
 fi
-if ! is_valid_ip "$SRC" && ! is_valid_domain "$SRC"; then
-	echo '{"ok":false,"error":"источник: IP или домен"}'
+if ! is_valid_ip "$SRC" && ! is_valid_domain "$SRC" && ! echo "$SRC" | grep -qE '^\.[A-Za-z0-9.-]+$' && ! echo "$SRC" | grep -qE '^[A-Za-z0-9._()\[\]|^$+*?{}\\-]{1,64}$'; then
+	echo '{"ok":false,"error":"источник: IP, домен, суффикс или регэксп"}'
 	exit 0
 fi
 
-sed -i "s@^${IP}|.*@${IP}|${LABEL}|${SRC}|${MODE}@" "$CONF"
+TYPE=$(awk -F'|' -v k="$IP" '$1==k{print $5; exit}' "$CONF")
+NEWLINE="${IP}|${LABEL}|${SRC}|${MODE}|${TYPE}"
+awk -F'|' -v k="$IP" -v nl="$NEWLINE" '
+	$1==k { $0=nl; print; next }
+	{ print }
+' "$CONF" > "${CONF}.tmp"
+mv "${CONF}.tmp" "$CONF"
 /usr/bin/warp-targets-apply.sh >/dev/null 2>&1
 
 echo "{\"ok\":true,\"message\":\"${IP} обновлён (${MODE})\"}"

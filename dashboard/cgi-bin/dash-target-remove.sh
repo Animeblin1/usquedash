@@ -13,17 +13,19 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 	[ "$key" = "ip" ] && IP="$val"
 done
 
-if ! is_valid_ip "$IP"; then
-	echo '{"ok":false,"error":"некорректный IP"}'
+IP="$(urldecode "$IP")"
+
+if ! is_valid_ip "$IP" && ! echo "$IP" | grep -qE '^\.[A-Za-z0-9.-]+$' && ! is_valid_regex "$IP"; then
+	echo '{"ok":false,"error":"некорректная цель"}'
 	exit 0
 fi
 
-if [ ! -f "$CONF" ] || ! grep -q "^${IP}|" "$CONF"; then
-	echo '{"ok":false,"error":"такого IP нет в списке"}'
+if [ ! -f "$CONF" ] || [ "$(conf_has_key "$IP" "$CONF")" != "YES" ]; then
+	echo '{"ok":false,"error":"такой цели нет в списке"}'
 	exit 0
 fi
 
-grep -v "^${IP}|" "$CONF" > "${CONF}.tmp" || true
+awk -F'|' -v k="$IP" '$1!=k' "$CONF" > "${CONF}.tmp"
 mv "${CONF}.tmp" "$CONF"
 /usr/bin/warp-targets-apply.sh >/dev/null 2>&1
 echo "{\"ok\":true,\"message\":\"${IP} убран из WARP\"}"

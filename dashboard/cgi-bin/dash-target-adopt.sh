@@ -12,6 +12,7 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 	val=${kv#*=}
 	[ "$key" = "prio" ] && PRIO="$val"
 done
+PRIO="$(urldecode "$PRIO")"
 
 echo "$PRIO" | grep -qE '^[0-9]{1,3}$' || {
 	echo '{"ok":false,"error":"некорректный приоритет"}'

@@ -11,6 +11,7 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 		name) NAME="$val" ;;
 	esac
 done
+NAME="$(urldecode "$NAME")"
 
 if ! check_password "$PASSWORD"; then
 	echo "Content-Type: text/plain"

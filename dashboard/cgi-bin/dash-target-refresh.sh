@@ -12,6 +12,7 @@ for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 	val=${kv#*=}
 	[ "$key" = "ip" ] && IP="$val"
 done
+IP="$(urldecode "$IP")"
 
 if ! is_valid_ip "$IP"; then
 	echo '{"ok":false,"error":"некорректный IP"}'
