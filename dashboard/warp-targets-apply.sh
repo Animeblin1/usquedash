@@ -30,9 +30,10 @@ PRIO_MAX=199
 
 [ -f /etc/warp-lan.conf ] && . /etc/warp-lan.conf
 if [ -z "$SUBNET" ] || [ -z "$IFACE" ]; then
-	[ -z "$IFACE" ] && IFACE=$(uci get network.lan.ifname 2>/dev/null)
+	PRIV=$(ip -o -4 addr show 2>/dev/null | awk '$3=="inet" && $4 ~ /^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/ {print; exit}')
+	[ -z "$IFACE" ] && IFACE=$(echo "$PRIV" | awk '{print $2}')
+	[ -z "$SUBNET" ] && SUBNET=$(echo "$PRIV" | awk '{print $4}')
 	[ -z "$IFACE" ] && IFACE=br-lan
-	[ -z "$SUBNET" ] && SUBNET=$(ip -o -4 addr show dev "$IFACE" 2>/dev/null | awk '{print $4; exit}')
 fi
 
 WHOL=$(cat /etc/warp-wholelan 2>/dev/null)

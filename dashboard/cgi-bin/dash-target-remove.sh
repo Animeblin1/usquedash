@@ -23,6 +23,7 @@ if [ ! -f "$CONF" ] || ! grep -q "^${IP}|" "$CONF"; then
 	exit 0
 fi
 
-grep -v "^${IP}|" "$CONF" > "${CONF}.tmp" && mv "${CONF}.tmp" "$CONF"
+grep -v "^${IP}|" "$CONF" > "${CONF}.tmp" || true
+mv "${CONF}.tmp" "$CONF"
 /usr/bin/warp-targets-apply.sh >/dev/null 2>&1
 echo "{\"ok\":true,\"message\":\"${IP} убран из WARP\"}"

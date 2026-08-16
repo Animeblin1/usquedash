@@ -16,7 +16,11 @@ require_password() {
 		echo '{"ok":false,"error":"пароль не настроен на роутере"}'
 		exit 0
 	fi
-	if ! check_password "$HTTP_X_PASSWORD"; then
+	DASHPASS="$HTTP_X_PASSWORD"
+	if [ -z "$DASHPASS" ] && [ -n "$HTTP_COOKIE" ]; then
+		DASHPASS=$(echo "$HTTP_COOKIE" | sed 's/.*dashpass=\([^;]*\).*/\1/' | tr -d ';,' )
+	fi
+	if ! check_password "$DASHPASS"; then
 		echo '{"ok":false,"error":"неверный пароль"}'
 		exit 0
 	fi

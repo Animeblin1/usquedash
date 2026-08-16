@@ -202,7 +202,9 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function badge(ok,text){return '<span class="badge '+(ok?'ok':'bad')+'">'+esc(text)+'</span>'}
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)}
 
-function headers(){return pass?{'X-Password':pass}:{}}
+function headers(){return {}}
+
+function setDashCookie(p){document.cookie='dashpass='+encodeURIComponent(p).replace(/[;,]/g,'')+'; path=/; max-age=31536000'}
 
 async function fetchJSON(url){
 	const r=await fetch(url,{headers:headers()});
@@ -373,6 +375,7 @@ document.getElementById('tab-clash').onclick=()=>showTab('clash');
 document.getElementById('loginBtn').onclick=()=>{
 	pass=document.getElementById('loginPass').value;
 	localStorage.setItem('dash_password',pass);
+	setDashCookie(pass);
 	document.getElementById('loginOverlay').style.display='none';
 	loadStatus();
 };
@@ -380,6 +383,7 @@ document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='
 
 (async function init(){
 	if(pass){
+		setDashCookie(pass);
 		try{
 			const d=await fetchJSON(API+'/dash-status.sh');
 			document.getElementById('loginOverlay').style.display='none';
