@@ -13,6 +13,7 @@ header .sys{margin-left:auto;color:#8b949e;font-size:12px}
 .tabs{display:flex;gap:4px;background:#161b22;padding:0 16px;border-bottom:1px solid #30363d}
 .tabs button{background:none;border:none;color:#8b949e;padding:10px 16px;font-size:14px;cursor:pointer;border-bottom:2px solid transparent}
 .tabs button.active{color:#e6edf3;border-bottom-color:#58a6ff}
+.tabs button:focus-visible,.btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
 main{padding:16px;max-width:1100px;margin:0 auto}
 .card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:14px;margin-bottom:12px}
 .card h3{color:#58a6ff;font-size:14px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
@@ -37,6 +38,8 @@ select{background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6ed
 textarea{min-height:160px;font-family:monospace;font-size:12px}
 label{color:#8b949e;font-size:12px}
 table{width:100%;border-collapse:collapse}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{min-width:620px}
 th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #21262d;font-size:13px}
 th{color:#8b949e;font-weight:600}
 a{color:#58a6ff}
@@ -49,6 +52,20 @@ a{color:#58a6ff}
 .muted{color:#8b949e;font-size:12px;line-height:1.6}
 .flexrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .flexrow input[type=text]{flex:1;min-width:200px}
+input[type=file]{max-width:100%;color:#8b949e;font-size:13px}
+@media (max-width:600px){
+ body{font-size:13px}
+ header{padding:10px 12px;gap:10px}
+ header h1{font-size:16px}
+ header .sys{display:none}
+ .tabs{order:3;width:100%;overflow-x:auto;padding:0;gap:0}
+ .tabs button{flex:0 0 auto;padding:10px 12px;font-size:13px}
+ main{padding:10px}
+ .card{padding:12px;margin-bottom:10px}
+ .grid{grid-template-columns:minmax(0,1fr)}
+ .flexrow input[type=text]{min-width:140px}
+ .modal-box{max-height:90vh;overflow-y:auto;padding:16px}
+}
 </style>
 </head>
 <body>
@@ -159,18 +176,18 @@ a{color:#58a6ff}
 	</div>
 	<div class="card">
 		<h3>Список целей</h3>
-		<table>
+		<div class="table-wrap"><table>
 			<thead><tr><th>IP</th><th>Метка</th><th>Источник</th><th>Режим</th><th>Статус</th><th></th></tr></thead>
 			<tbody id="tg-table"><tr><td colspan="6" class="muted">загрузка...</td></tr></tbody>
-		</table>
+		</table></div>
 	</div>
 	<div class="card">
 		<h3>Правила вне управления</h3>
 		<p class="muted">Ручные правила (например, 90/100), которых нет в списке целей. Можно редактировать/удалять прямо здесь или «взять под управление» — тогда старое правило удалится, вместо него появится цель (режим WARP).</p>
-		<table>
+		<div class="table-wrap"><table>
 			<thead><tr><th>Приоритет</th><th>Правило</th><th></th></tr></thead>
 			<tbody id="um-table"><tr><td colspan="3" class="muted">загрузка...</td></tr></tbody>
-		</table>
+		</table></div>
 	</div>
 	<div class="card">
 		<h3>Все правила маршрутизации</h3>
@@ -240,10 +257,10 @@ a{color:#58a6ff}
 	</div>
 	<div class="card">
 		<h3>Список бэкапов</h3>
-		<table>
+		<div class="table-wrap"><table>
 			<thead><tr><th>Имя</th><th>Размер</th><th>Дата</th><th></th></tr></thead>
 			<tbody id="bk-table"><tr><td colspan="4" class="muted">загрузка...</td></tr></tbody>
-		</table>
+		</table></div>
 	</div>
 </div>
 
@@ -270,8 +287,10 @@ let S=null;
 let pass=localStorage.getItem('dash_password')||'';
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function jsq(s){return esc(JSON.stringify(String(s??'')))}
 function badge(ok,text){return '<span class="badge '+(ok?'ok':'bad')+'">'+esc(text)+'</span>'}
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),4000)}
+let toastTimer;
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),4000)}
 
 function headers(){return {}}
 
@@ -279,7 +298,9 @@ function setDashCookie(p){document.cookie='dashpass='+encodeURIComponent(p).repl
 
 async function fetchJSON(url){
 	const r=await fetch(url,{headers:headers()});
-	return r.json();
+	const d=await r.json();
+	if(!r.ok)throw new Error(d.error||('HTTP '+r.status));
+	return d;
 }
 
 async function doAction(action){
@@ -308,7 +329,7 @@ async function loadStatus(){
 		const wlOn=wl.state==='1';
 		document.getElementById('whol-btn').textContent=wlOn?'Выключить WholeLAN':'Включить WholeLAN';
 		document.getElementById('whol-btn').className='btn'+(wlOn?' red':'');
-		document.getElementById('whol-state').textContent=wlOn?'вкл':(wl.state==='0'?'выкл':'не управляется (легаси)')+' | правило 80: '+(wl.rule==='yes'?'есть':'нет');
+		document.getElementById('whol-state').textContent=(wlOn?'вкл':(wl.state==='0'?'выкл':'не управляется (легаси)'))+' | правило 80: '+(wl.rule==='yes'?'есть':'нет');
 		document.getElementById('wd-cron').innerHTML=d.watchdog.cron_active==='yes'?badge(true,'активен'):badge(false,'нет');
 		document.getElementById('tg-cron').innerHTML=d.targets_cron_active==='yes'?badge(true,'активен'):badge(false,'нет');
 		document.getElementById('wd-log').textContent=d.watchdog.log||'(лога пока нет - падений не было)';
@@ -331,10 +352,10 @@ function renderTargets(list){
 		const tb2=t.type==='suffix'?'<span class="badge grey">*.'+esc(t.src.replace(/^\./,''))+'</span>':t.type==='regex'?'<span class="badge grey">/'+esc(t.src)+'/</span>':t.type==='domain'?'<span class="badge grey">домен</span>':'';
 		return '<tr><td>'+esc(t.ip)+tb2+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td><td>'+mb+'</td>'+
 		'<td>'+(t.status==='active'?badge(true,'активна'):badge(false,'ожидает'))+'</td>'+
-		'<td><button class="btn grey" onclick="cycleMode(\''+t.ip+'\',\''+t.mode+'\')">Режим</button> '+
-		'<button class="btn grey" onclick="editTarget(\''+t.ip+'\')">Изменить</button> '+
-		'<button class="btn grey" onclick="refreshTarget(\''+t.ip+'\')">Обновить</button> '+
-		'<button class="btn red" onclick="removeTarget(\''+t.ip+'\')">Убрать</button></td></tr>'
+		'<td><button class="btn grey" onclick="cycleMode('+jsq(t.ip)+','+jsq(t.mode)+')">Режим</button> '+
+		'<button class="btn grey" onclick="editTarget('+jsq(t.ip)+')">Изменить</button> '+
+		'<button class="btn grey" onclick="refreshTarget('+jsq(t.ip)+')">Обновить</button> '+
+		'<button class="btn red" onclick="removeTarget('+jsq(t.ip)+')">Убрать</button></td></tr>'
 	}).join('');
 	renderUnmanaged();
 }
@@ -421,7 +442,7 @@ async function saveEdit(){
 
 function cycleMode(ip,cur){
 	const next={warp:'byedpi',byedpi:'direct',direct:'warp'}[cur]||'warp';
-	fetchJSON(API+'/dash-target-mode.sh?ip='+ip+'&mode='+next).then(d=>{
+	fetchJSON(API+'/dash-target-mode.sh?ip='+encodeURIComponent(ip)+'&mode='+next).then(d=>{
 		toast(d.message||d.error);
 		if(d.ok)loadStatus();
 	});
@@ -460,13 +481,13 @@ async function addPresets(){
 
 async function removeTarget(ip){
 	if(!confirm('Убрать '+ip+' из WARP?'))return
-	const d=await fetchJSON(API+'/dash-target-remove.sh?ip='+ip);
+	const d=await fetchJSON(API+'/dash-target-remove.sh?ip='+encodeURIComponent(ip));
 	toast(d.message||d.error);
 	if(d.ok)loadStatus();
 }
 
 async function refreshTarget(ip){
-	const d=await fetchJSON(API+'/dash-target-refresh.sh?ip='+ip);
+	const d=await fetchJSON(API+'/dash-target-refresh.sh?ip='+encodeURIComponent(ip));
 	toast(d.message||d.error);
 	if(d.ok)loadStatus();
 }
@@ -494,10 +515,10 @@ async function renderBackups(){
 		tb.innerHTML=d.backups.map(b=>
 			'<tr><td>'+esc(b.name)+'</td><td>'+esc(b.size)+'</td><td>'+esc(b.date)+'</td><td>'+
 			'<a class="btn grey" style="text-decoration:none" href="'+API+'/dash-backup-download.sh?name='+encodeURIComponent(b.name)+'&password='+encodeURIComponent(pass)+'">Скачать</a> '+
-			'<button class="btn" onclick="restoreBackup(\''+b.name+'\')">Восстановить</button> '+
-			'<button class="btn red" onclick="deleteBackup(\''+b.name+'\')">Удалить</button></td></tr>'
+			'<button class="btn" onclick="restoreBackup('+jsq(b.name)+')">Восстановить</button> '+
+			'<button class="btn red" onclick="deleteBackup('+jsq(b.name)+')">Удалить</button></td></tr>'
 		).join('');
-	}catch(e){}
+	}catch(e){document.getElementById('bk-table').innerHTML='<tr><td colspan="4" class="muted">ошибка загрузки бэкапов: '+esc(e.message)+'</td></tr>'}
 }
 
 async function restoreBackup(name){
@@ -543,12 +564,23 @@ document.getElementById('tab-targets').onclick=()=>showTab('targets');
 document.getElementById('tab-backups').onclick=()=>showTab('backups');
 document.getElementById('tab-clash').onclick=()=>showTab('clash');
 
-document.getElementById('loginBtn').onclick=()=>{
-	pass=document.getElementById('loginPass').value;
-	localStorage.setItem('dash_password',pass);
+document.getElementById('loginBtn').onclick=async()=>{
+	const candidate=document.getElementById('loginPass').value;
+	if(!candidate){toast('введи пароль');return}
+	pass=candidate;
 	setDashCookie(pass);
-	document.getElementById('loginOverlay').style.display='none';
-	loadStatus();
+	try{
+		const d=await fetchJSON(API+'/dash-backup-list.sh');
+		if(d.ok===false)throw new Error(d.error||'неверный пароль');
+		localStorage.setItem('dash_password',pass);
+		document.getElementById('loginOverlay').style.display='none';
+		loadStatus();
+	}catch(e){
+		pass='';
+		document.cookie='dashpass=; path=/; max-age=0';
+		toast('неверный пароль');
+		document.getElementById('loginPass').select();
+	}
 };
 document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('loginBtn').click()});
 
@@ -556,14 +588,29 @@ document.getElementById('loginPass').addEventListener('keydown',e=>{if(e.key==='
 	if(pass){
 		setDashCookie(pass);
 		try{
-			const d=await fetchJSON(API+'/dash-status.sh');
+			const d=await fetchJSON(API+'/dash-backup-list.sh');
+			if(d.ok===false)throw new Error(d.error||'неверный пароль');
 			document.getElementById('loginOverlay').style.display='none';
 			loadStatus();
 			return;
-		}catch(e){}
+		}catch(e){
+			pass='';
+			localStorage.removeItem('dash_password');
+			document.cookie='dashpass=; path=/; max-age=0';
+		}
 	}
 	document.getElementById('loginOverlay').style.display='flex';
 })();
+
+document.addEventListener('keydown',e=>{
+	if(e.key==='Escape'){
+		closeEdit();
+		closeRuleModal();
+	}
+});
+['edit-modal','rule-modal'].forEach(id=>document.getElementById(id).addEventListener('click',e=>{
+	if(e.target.id===id)document.getElementById(id).style.display='none';
+}));
 
 setInterval(loadStatus,5000);
 </script>
