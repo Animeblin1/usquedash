@@ -159,6 +159,11 @@ a{color:#58a6ff}
 			<tbody id="tg-table"><tr><td colspan="6" class="muted">загрузка...</td></tr></tbody>
 		</table>
 	</div>
+	<div class="card">
+		<h3>Все правила маршрутизации</h3>
+		<p class="muted">Полный список <code>ip rule</code> на роутере, включая ручные (90/100) и WholeLAN (80). Чем меньше номер — тем приоритетнее.</p>
+		<pre id="rules-all">-</pre>
+	</div>
 </div>
 
 <div id="view-backups" style="display:none">
@@ -166,6 +171,14 @@ a{color:#58a6ff}
 		<h3>Бэкапы конфигов</h3>
 		<p class="muted">В бэкап входят: config.json WARP, init-скрипты, список целей, cron, правила iptables. Бинарники не входят.</p>
 		<button class="btn" onclick="createBackup()">Создать бэкап</button>
+	</div>
+	<div class="card">
+		<h3>Загрузить бэкап с компьютера</h3>
+		<p class="muted">Выбери сохранённый ранее <code>.tar.gz</code>-бэкап — он появится в списке ниже, и его можно будет восстановить.</p>
+		<div class="flexrow">
+			<input type="file" id="bk-file" accept=".tar.gz">
+			<button class="btn" onclick="uploadBackup()">Загрузить</button>
+		</div>
 	</div>
 	<div class="card">
 		<h3>Список бэкапов</h3>
@@ -246,6 +259,7 @@ async function loadStatus(){
 		document.getElementById('sys-overlay').textContent=d.overlay;
 		document.getElementById('warp-rules').textContent=d.warp.rules||'(пусто)';
 		document.getElementById('warp-routes').textContent=d.warp.routes||'(пусто)';
+		document.getElementById('rules-all').textContent=d.rules_all||'(пусто)';
 		renderTargets(d.targets||[]);
 		renderBackups();
 	}catch(e){toast('ошибка статуса: '+e.message)}
@@ -313,6 +327,15 @@ async function createBackup(){
 	const d=await fetchJSON(API+'/dash-backup-create.sh');
 	toast(d.message||d.error);
 	if(d.ok)loadStatus();
+}
+
+async function uploadBackup(){
+	const f=document.getElementById('bk-file').files[0];
+	if(!f){toast('выбери файл бэкапа (.tar.gz)');return}
+	const r=await fetch(API+'/dash-backup-upload.sh?name='+encodeURIComponent(f.name),{method:'POST',headers:headers(),body:f});
+	const d=await r.json();
+	toast(d.message||d.error||'ок');
+	if(d.ok){renderBackups();document.getElementById('bk-file').value=''}
 }
 
 async function renderBackups(){

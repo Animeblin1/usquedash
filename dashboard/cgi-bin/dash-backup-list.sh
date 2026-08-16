@@ -10,7 +10,7 @@ LIST=""
 FIRST=1
 
 if [ -d "$BACKUP_DIR" ]; then
-	for f in "$BACKUP_DIR"/backup-*.tar.gz; do
+	for f in "$BACKUP_DIR"/*.tar.gz; do
 		[ -f "$f" ] || continue
 		NAME=$(basename "$f")
 		SIZE=$(du -h "$f" | awk '{print $1}')

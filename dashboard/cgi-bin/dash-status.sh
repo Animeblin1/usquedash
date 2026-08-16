@@ -47,6 +47,8 @@ grep -q usque-watchdog /etc/crontabs/* 2>/dev/null && WATCHDOG_CRON="yes"
 TARGETS_CRON="no"
 grep -q warp-targets-apply /etc/crontabs/* 2>/dev/null && TARGETS_CRON="yes"
 
+RULES_ALL=$(ip rule show 2>/dev/null | json_escape)
+
 CLASH_IMPORTER="no"
 [ -x /usr/bin/import-clash.sh ] && CLASH_IMPORTER="yes"
 
@@ -104,6 +106,7 @@ cat << EOF
   },
   "targets_cron_active": "$TARGETS_CRON",
   "clash_importer": "$CLASH_IMPORTER",
+  "rules_all": "$RULES_ALL",
   "targets": [ $TARGETS_JSON ]
 }
 EOF
