@@ -35,6 +35,8 @@ fi
 
 [ -f "$RESTORE/etc/usque/config.json" ] && cp "$RESTORE/etc/usque/config.json" /etc/usque/config.json
 [ -f "$RESTORE/etc/warp-targets.conf" ] && cp "$RESTORE/etc/warp-targets.conf" /etc/warp-targets.conf
+[ -f "$RESTORE/etc/warp-lan.conf" ] && cp "$RESTORE/etc/warp-lan.conf" /etc/warp-lan.conf
+[ -f "$RESTORE/etc/warp-wholelan" ] && cp "$RESTORE/etc/warp-wholelan" /etc/warp-wholelan
 [ -f "$RESTORE/etc/init.d/usque" ] && cp "$RESTORE/etc/init.d/usque" /etc/init.d/usque && chmod +x /etc/init.d/usque
 [ -f "$RESTORE/etc/init.d/warp-targets" ] && cp "$RESTORE/etc/init.d/warp-targets" /etc/init.d/warp-targets && chmod +x /etc/init.d/warp-targets
 [ -f "$RESTORE/etc/init.d/byedpi" ] && cp "$RESTORE/etc/init.d/byedpi" /etc/init.d/byedpi && chmod +x /etc/init.d/byedpi

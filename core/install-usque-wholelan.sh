@@ -5,6 +5,9 @@ set -e
 # Отличие от install-usque-core.sh: добавляется policy-правило
 # "from <подсеть> lookup warp priority 80" - всё, что не попало под
 # более приоритетные правила (150-199, цели из дашборда), идёт в WARP.
+# Режим wholelan управляемый: /etc/warp-wholelan (1=вкл), тумблер в дашборде.
+# Параметры подсети пишутся в /etc/warp-lan.conf (SUBNET/IFACE) - их читает
+# /usr/bin/warp-targets-apply.sh и init-скрипт при загрузке.
 #
 # Ручная установка (вместо этого скрипта):
 #   1) Бинарник:   cp usque-mipsel /usr/bin/usque && chmod +x /usr/bin/usque
@@ -54,7 +57,12 @@ echo "Проверка: $(ls /dev/net/tun 2>/dev/null || echo 'НЕ СОЗДАН
 echo "=== [4/7] Проверяем место на /overlay ==="
 df -h /overlay 2>/dev/null || true
 
-echo "=== [5/7] Создаём init-скрипт /etc/init.d/usque ==="
+echo "=== [5/7] Параметры маршрутизации для дашборда ==="
+printf 'SUBNET=%s\nIFACE=%s\n' "$LAN_SUBNET" "$LAN_IFACE" > /etc/warp-lan.conf
+echo "1" > /etc/warp-wholelan
+echo "Записано: /etc/warp-lan.conf (SUBNET=${LAN_SUBNET}, IFACE=${LAN_IFACE}), /etc/warp-wholelan=1"
+
+echo "=== [6/7] Создаём init-скрипт /etc/init.d/usque ==="
 cat > /etc/init.d/usque << SCRIPT
 #!/bin/sh /etc/rc.common
 START=97
@@ -81,10 +89,12 @@ start() {
 	grep -q "^200 warp" /etc/iproute2/rt_tables || echo "200 warp" >> /etc/iproute2/rt_tables
 	ip route add default dev tun0 table warp 2>/dev/null
 	ip route add \${LAN_SUBNET} dev \${LAN_IFACE} table warp 2>/dev/null
-	ip rule del from \${LAN_SUBNET} table warp priority \${PRIORITY} 2>/dev/null
-	ip rule add from \${LAN_SUBNET} table warp priority \${PRIORITY}
+	if [ "\$(cat /etc/warp-wholelan 2>/dev/null)" != "0" ]; then
+		ip rule del from \${LAN_SUBNET} table warp priority \${PRIORITY} 2>/dev/null
+		ip rule add from \${LAN_SUBNET} table warp priority \${PRIORITY}
 
-	iptables -t nat -C PREROUTING -s \${LAN_SUBNET} -j RETURN 2>/dev/null || iptables -t nat -I PREROUTING 2 -s \${LAN_SUBNET} -j RETURN
+		iptables -t nat -C PREROUTING -s \${LAN_SUBNET} -j RETURN 2>/dev/null || iptables -t nat -I PREROUTING 2 -s \${LAN_SUBNET} -j RETURN
+	fi
 
 	iptables -C FORWARD -i \${LAN_IFACE} -o tun0 -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i \${LAN_IFACE} -o tun0 -j ACCEPT
 	iptables -C FORWARD -i tun0 -o \${LAN_IFACE} -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -i tun0 -o \${LAN_IFACE} -j ACCEPT
@@ -98,6 +108,18 @@ start() {
 stop() {
 	ip rule del from \${LAN_SUBNET} table warp priority \${PRIORITY} 2>/dev/null
 	iptables -t nat -D PREROUTING -s \${LAN_SUBNET} -j RETURN 2>/dev/null
+	ip rule show 2>/dev/null | grep -E "(table|lookup) warp priority 75" | awk '{print $3}' | while read -r R; do
+		ip rule del from "\$R" table main priority 75 2>/dev/null
+		iptables -t nat -D PREROUTING -s "\$R" -j RETURN 2>/dev/null
+	done
+	P=150
+	while [ "\$P" -le 199 ]; do
+		ip rule show 2>/dev/null | grep -E "(table|lookup) warp priority \${P}" | awk '{print $3}' | while read -r R; do
+			ip rule del from "\$R" table warp priority "\$P" 2>/dev/null
+			iptables -t nat -D PREROUTING -s "\$R" -j RETURN 2>/dev/null
+		done
+		P=\$((P + 1))
+	done
 	ip route flush table warp 2>/dev/null
 	[ -f /var/run/usque.pid ] && kill \$(cat /var/run/usque.pid) 2>/dev/null
 	ip link delete tun0 2>/dev/null
@@ -105,12 +127,12 @@ stop() {
 SCRIPT
 chmod +x /etc/init.d/usque
 
-echo "=== [6/7] Включаем автозагрузку и стартуем ==="
+echo "=== [7/7] Включаем автозагрузку и стартуем ==="
 /etc/init.d/usque enable
 /etc/init.d/usque start
 sleep 3
 
-echo "=== [7/7] Проверка ==="
+echo "=== [8/7] Проверка ==="
 echo "--- процесс ---"
 ps w | grep usqu[e]
 echo "--- интерфейс tun0 ---"

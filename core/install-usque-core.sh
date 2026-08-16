@@ -51,7 +51,10 @@ insmod tun 2>/dev/null || true
 mkdir -p /dev/net
 [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
 
-echo "=== [4/6] Создаём init-скрипт /etc/init.d/usque ==="
+echo "=== [4/6] Параметры маршрутизации и init-скрипт ==="
+printf 'SUBNET=%s\nIFACE=%s\n' "$LAN_SUBNET" "$LAN_IFACE" > /etc/warp-lan.conf
+echo "0" > /etc/warp-wholelan
+echo "Записано: /etc/warp-lan.conf, /etc/warp-wholelan=0 (wholelan выключен)"
 cat > /etc/init.d/usque << SCRIPT2
 #!/bin/sh /etc/rc.common
 START=97
@@ -78,6 +81,13 @@ start() {
 	ip route add default dev tun0 table warp 2>/dev/null
 	ip route add \${LAN_SUBNET} dev \${LAN_IFACE} table warp 2>/dev/null
 
+	if [ "\$(cat /etc/warp-wholelan 2>/dev/null)" = "1" ]; then
+		ip rule del from \${LAN_SUBNET} table warp priority 80 2>/dev/null
+		ip rule add from \${LAN_SUBNET} table warp priority 80
+
+		iptables -t nat -C PREROUTING -s \${LAN_SUBNET} -j RETURN 2>/dev/null || iptables -t nat -I PREROUTING 2 -s \${LAN_SUBNET} -j RETURN
+	fi
+
 	iptables -C FORWARD -i \${LAN_IFACE} -o tun0 -j ACCEPT 2>/dev/null || iptables -I FORWARD 1 -i \${LAN_IFACE} -o tun0 -j ACCEPT
 	iptables -C FORWARD -i tun0 -o \${LAN_IFACE} -j ACCEPT 2>/dev/null || iptables -I FORWARD 2 -i tun0 -o \${LAN_IFACE} -j ACCEPT
 	iptables -t nat -C POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
@@ -88,6 +98,18 @@ start() {
 
 stop() {
 	ip route flush table warp 2>/dev/null
+	ip rule show 2>/dev/null | grep -E "(table|lookup) main priority 75" | awk '{print $3}' | while read -r R; do
+		ip rule del from "\$R" table main priority 75 2>/dev/null
+		iptables -t nat -D PREROUTING -s "\$R" -j RETURN 2>/dev/null
+	done
+	P=150
+	while [ "\$P" -le 199 ]; do
+		ip rule show 2>/dev/null | grep -E "(table|lookup) warp priority \${P}" | awk '{print $3}' | while read -r R; do
+			ip rule del from "\$R" table warp priority "\$P" 2>/dev/null
+			iptables -t nat -D PREROUTING -s "\$R" -j RETURN 2>/dev/null
+		done
+		P=\$((P + 1))
+	done
 	[ -f /var/run/usque.pid ] && kill \$(cat /var/run/usque.pid) 2>/dev/null
 	ip link delete tun0 2>/dev/null
 }

@@ -8,14 +8,22 @@ require_password
 CONF="/etc/warp-targets.conf"
 TARGET=""
 LABEL=""
+MODE=""
 for kv in $(echo "$QUERY_STRING" | tr '&' ' '); do
 	key=${kv%%=*}
 	val=${kv#*=}
 	case "$key" in
 		target) TARGET="$val" ;;
 		label) LABEL="$val" ;;
+		mode) MODE="$val" ;;
 	esac
 done
+
+[ -z "$MODE" ] && MODE="warp"
+case "$MODE" in
+	warp|direct|byedpi) ;;
+	*) echo '{"ok":false,"error":"режим: warp, direct или byedpi"}'; exit 0 ;;
+esac
 
 if ! is_valid_label "$LABEL"; then
 	echo '{"ok":false,"error":"метка: только латиница/цифры/дефис/подчёркивание, до 32 символов"}'
@@ -45,11 +53,11 @@ if grep -q "^${IP}|" "$CONF" 2>/dev/null; then
 	exit 0
 fi
 
-echo "${IP}|${LABEL}|${SRC}" >> "$CONF"
+echo "${IP}|${LABEL}|${SRC}|${MODE}" >> "$CONF"
 /usr/bin/warp-targets-apply.sh >/dev/null 2>&1
 
 if [ "$IP" = "$SRC" ]; then
-	echo "{\"ok\":true,\"message\":\"${IP} добавлен в WARP\"}"
+	echo "{\"ok\":true,\"message\":\"${IP} добавлен (режим ${MODE})\"}"
 else
-	echo "{\"ok\":true,\"message\":\"${SRC} -> ${IP} добавлен в WARP\"}"
+	echo "{\"ok\":true,\"message\":\"${SRC} -> ${IP} добавлен (режим ${MODE})\"}"
 fi

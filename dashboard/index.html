@@ -33,6 +33,7 @@ button.btn.red{background:#da3633}
 button.btn.red:hover{background:#f85149}
 button.btn:disabled{opacity:.5;cursor:default}
 input[type=text],input[type=password],textarea{background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:7px 10px;font-size:14px;width:100%;margin:4px 0}
+select{background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;padding:7px 10px;font-size:14px;margin:4px 0}
 textarea{min-height:160px;font-family:monospace;font-size:12px}
 label{color:#8b949e;font-size:12px}
 table{width:100%;border-collapse:collapse}
@@ -89,10 +90,16 @@ a{color:#58a6ff}
 			<h3>ByeDPI</h3>
 			<div class="kv"><span class="k">Процессы</span><span id="byedpi-count">-</span></div>
 			<div class="kv"><span class="k">Автозагрузка</span><span id="byedpi-enabled">-</span></div>
+			<div class="kv"><span class="k">Стратегия</span><span id="byedpi-strategy">-</span></div>
 			<div class="flexrow" style="margin-top:8px">
 				<button class="btn" onclick="doAction('restart_byedpi')">Рестарт ByeDPI</button>
 				<button class="btn" onclick="doAction('enable_byedpi')">Включить</button>
 				<button class="btn red" onclick="doAction('disable_byedpi')">Выключить</button>
+			</div>
+			<div class="flexrow">
+				<button class="btn grey" onclick="byedpiStrategy('a')">Стратегия A</button>
+				<button class="btn grey" onclick="byedpiStrategy('b')">Стратегия B</button>
+				<button class="btn grey" onclick="byedpiStrategy('c')">Стратегия C</button>
 			</div>
 		</div>
 		<div class="card">
@@ -124,19 +131,32 @@ a{color:#58a6ff}
 
 <div id="view-targets" style="display:none">
 	<div class="card">
-		<h3>Добавить цель WARP</h3>
-		<p class="muted">IP устройства (<code>192.168.1.50</code>) или домен (<code>youtube.com</code>). Домен разрешится в IP автоматически.</p>
+		<h3>WholeLAN</h3>
+		<p class="muted">Весь LAN через WARP одной кнопкой. При включённом WholeLAN режим <b>ByeDPI</b> у целей не работает (весь трафик уже уходит в туннель), режим <b>Direct</b> продолжает работать.</p>
+		<div class="flexrow">
+			<button class="btn" id="whol-btn" onclick="toggleWholelan()">...</button>
+			<span id="whol-state" class="muted"></span>
+		</div>
+	</div>
+	<div class="card">
+		<h3>Добавить цель</h3>
+		<p class="muted">IP устройства (<code>192.168.1.50</code>) или домен (<code>youtube.com</code>). Режим: <b>WARP</b> — через туннель, <b>ByeDPI</b> — через десинхронизацию (только при выключенном WholeLAN), <b>Direct</b> — мимо всего.</p>
 		<div class="flexrow">
 			<input type="text" id="tg-target" placeholder="IP или домен">
 			<input type="text" id="tg-label" placeholder="Метка (необязательно)">
+			<select id="tg-mode">
+				<option value="warp">WARP</option>
+				<option value="byedpi">ByeDPI</option>
+				<option value="direct">Direct</option>
+			</select>
 			<button class="btn" onclick="addTarget()">Добавить</button>
 		</div>
 	</div>
 	<div class="card">
 		<h3>Список целей</h3>
 		<table>
-			<thead><tr><th>IP</th><th>Метка</th><th>Источник</th><th>Статус</th><th></th></tr></thead>
-			<tbody id="tg-table"><tr><td colspan="5" class="muted">загрузка...</td></tr></tbody>
+			<thead><tr><th>IP</th><th>Метка</th><th>Источник</th><th>Режим</th><th>Статус</th><th></th></tr></thead>
+			<tbody id="tg-table"><tr><td colspan="6" class="muted">загрузка...</td></tr></tbody>
 		</table>
 	</div>
 </div>
@@ -210,6 +230,12 @@ async function loadStatus(){
 		document.getElementById('tun-stats').textContent=d.tunnel.stats||'-';
 		document.getElementById('byedpi-count').textContent=d.byedpi.process_count;
 		document.getElementById('byedpi-enabled').textContent=d.byedpi.enabled;
+		document.getElementById('byedpi-strategy').textContent=d.byedpi.strategy||'(не установлен)';
+		const wl=d.wholelan||{};
+		const wlOn=wl.state==='1';
+		document.getElementById('whol-btn').textContent=wlOn?'Выключить WholeLAN':'Включить WholeLAN';
+		document.getElementById('whol-btn').className='btn'+(wlOn?' red':'');
+		document.getElementById('whol-state').textContent=wlOn?'вкл':(wl.state==='0'?'выкл':'не управляется (легаси)')+' | правило 80: '+(wl.rule==='yes'?'есть':'нет');
 		document.getElementById('wd-cron').innerHTML=d.watchdog.cron_active==='yes'?badge(true,'активен'):badge(false,'нет');
 		document.getElementById('tg-cron').innerHTML=d.targets_cron_active==='yes'?badge(true,'активен'):badge(false,'нет');
 		document.getElementById('wd-log').textContent=d.watchdog.log||'(лога пока нет - падений не было)';
@@ -225,20 +251,45 @@ async function loadStatus(){
 
 function renderTargets(list){
 	const tb=document.getElementById('tg-table');
-	if(!list.length){tb.innerHTML='<tr><td colspan="5" class="muted">целей нет - добавь ниже</td></tr>';return}
-	tb.innerHTML=list.map(t=>
-		'<tr><td>'+esc(t.ip)+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td>'+
-		'<td>'+(t.status==='active'?badge(true,'в WARP'):badge(false,'ожидает'))+'</td>'+
-		'<td><button class="btn grey" onclick="refreshTarget(\''+t.ip+'\')">Обновить</button> '+
+	if(!list.length){tb.innerHTML='<tr><td colspan="6" class="muted">целей нет - добавь ниже</td></tr>';return}
+	tb.innerHTML=list.map(t=>{
+		const mb=t.mode==='byedpi'?'<span class="badge grey">ByeDPI</span>':t.mode==='direct'?'<span class="badge grey">Direct</span>':'<span class="badge ok">WARP</span>';
+		return '<tr><td>'+esc(t.ip)+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td><td>'+mb+'</td>'+
+		'<td>'+(t.status==='active'?badge(true,'активна'):badge(false,'ожидает'))+'</td>'+
+		'<td><button class="btn grey" onclick="cycleMode(\''+t.ip+'\',\''+t.mode+'\')">Режим</button> '+
+		'<button class="btn grey" onclick="refreshTarget(\''+t.ip+'\')">Обновить</button> '+
 		'<button class="btn red" onclick="removeTarget(\''+t.ip+'\')">Убрать</button></td></tr>'
-	).join('');
+	}).join('');
+}
+
+function cycleMode(ip,cur){
+	const next={warp:'byedpi',byedpi:'direct',direct:'warp'}[cur]||'warp';
+	fetchJSON(API+'/dash-target-mode.sh?ip='+ip+'&mode='+next).then(d=>{
+		toast(d.message||d.error);
+		if(d.ok)loadStatus();
+	});
+}
+
+async function toggleWholelan(){
+	const wl=S&&S.wholelan||{};
+	const on=wl.state==='1';
+	const d=await fetchJSON(API+'/dash-wholelan.sh?state='+(on?'off':'on'));
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+async function byedpiStrategy(s){
+	const d=await fetchJSON(API+'/dash-byedpi-strategy.sh?strategy='+s);
+	toast(d.message||d.error);
+	if(d.ok)setTimeout(loadStatus,3000);
 }
 
 async function addTarget(){
 	const t=document.getElementById('tg-target').value.trim();
 	const l=document.getElementById('tg-label').value.trim();
+	const m=document.getElementById('tg-mode').value;
 	if(!t){toast('введи IP или домен');return}
-	const d=await fetchJSON(API+'/dash-target-add.sh?target='+encodeURIComponent(t)+'&label='+encodeURIComponent(l));
+	const d=await fetchJSON(API+'/dash-target-add.sh?target='+encodeURIComponent(t)+'&label='+encodeURIComponent(l)+'&mode='+m);
 	toast(d.message||d.error);
 	if(d.ok){document.getElementById('tg-target').value='';loadStatus()}
 }

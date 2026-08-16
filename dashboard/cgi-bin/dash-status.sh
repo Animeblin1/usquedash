@@ -31,6 +31,13 @@ if [ -x /etc/init.d/byedpi ]; then
 else
 	BYEDPI_ENABLED="unknown"
 fi
+BYEDPI_STRATEGY=""
+[ -f /etc/config/byedpi ] && BYEDPI_STRATEGY=$(grep "option cmd_opts" /etc/config/byedpi 2>/dev/null | head -1 | cut -d"'" -f2 | json_escape)
+
+WHOL_STATE="unmanaged"
+[ -f /etc/warp-wholelan ] && WHOL_STATE=$(cat /etc/warp-wholelan 2>/dev/null)
+WHOL_RULE="no"
+ip rule show 2>/dev/null | grep -q "priority 80" && WHOL_RULE="yes"
 
 WATCHDOG_LOG=""
 [ -f /var/log/usque-watchdog.log ] && WATCHDOG_LOG=$(tail -20 /var/log/usque-watchdog.log | json_escape)
@@ -46,10 +53,11 @@ CLASH_IMPORTER="no"
 TARGETS_JSON=""
 FIRST=1
 if [ -f /etc/warp-targets.conf ]; then
-	while IFS='|' read -r ip label src; do
+	while IFS='|' read -r ip label src mode; do
 		[ -z "$ip" ] && continue
 		case "$ip" in \#*) continue ;; esac
-		if ip rule show 2>/dev/null | grep -q "from ${ip} .*lookup warp"; then
+		[ -z "$mode" ] && mode="warp"
+		if ip rule show 2>/dev/null | grep -q "from ${ip} "; then
 			ST="active"
 		else
 			ST="pending"
@@ -57,7 +65,7 @@ if [ -f /etc/warp-targets.conf ]; then
 		IP_J=$(echo "$ip" | json_escape)
 		LABEL_J=$(echo "$label" | json_escape)
 		SRC_J=$(echo "$src" | json_escape)
-		ITEM="{\"ip\":\"${IP_J}\",\"label\":\"${LABEL_J}\",\"src\":\"${SRC_J}\",\"status\":\"${ST}\"}"
+		ITEM="{\"ip\":\"${IP_J}\",\"label\":\"${LABEL_J}\",\"src\":\"${SRC_J}\",\"mode\":\"${mode}\",\"status\":\"${ST}\"}"
 		if [ "$FIRST" = "1" ]; then TARGETS_JSON="$ITEM"; FIRST=0; else TARGETS_JSON="${TARGETS_JSON},${ITEM}"; fi
 	done < /etc/warp-targets.conf
 fi
@@ -83,7 +91,12 @@ cat << EOF
   },
   "byedpi": {
     "process_count": $BYEDPI_COUNT,
-    "enabled": "$BYEDPI_ENABLED"
+    "enabled": "$BYEDPI_ENABLED",
+    "strategy": "$BYEDPI_STRATEGY"
+  },
+  "wholelan": {
+    "state": "$WHOL_STATE",
+    "rule": "$WHOL_RULE"
   },
   "watchdog": {
     "cron_active": "$WATCHDOG_CRON",

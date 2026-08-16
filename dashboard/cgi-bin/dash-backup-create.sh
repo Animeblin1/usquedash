@@ -19,6 +19,8 @@ mkdir -p "$STAGE/etc/usque" "$STAGE/etc/init.d" "$STAGE/usr/bin" "$STAGE/etc/cro
 [ -f /etc/init.d/byedpi ] && cp /etc/init.d/byedpi "$STAGE/etc/init.d/"
 [ -f /etc/init.d/byedpi-transparent ] && cp /etc/init.d/byedpi-transparent "$STAGE/etc/init.d/"
 [ -f /etc/warp-targets.conf ] && cp /etc/warp-targets.conf "$STAGE/etc/"
+[ -f /etc/warp-lan.conf ] && cp /etc/warp-lan.conf "$STAGE/etc/"
+[ -f /etc/warp-wholelan ] && cp /etc/warp-wholelan "$STAGE/etc/"
 [ -f /usr/bin/warp-targets-apply.sh ] && cp /usr/bin/warp-targets-apply.sh "$STAGE/usr/bin/"
 [ -f /usr/bin/usque-watchdog.sh ] && cp /usr/bin/usque-watchdog.sh "$STAGE/usr/bin/"
 [ -f /usr/bin/import-clash.sh ] && cp /usr/bin/import-clash.sh "$STAGE/usr/bin/"

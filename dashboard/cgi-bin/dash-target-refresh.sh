@@ -42,7 +42,10 @@ if [ "$NEW_IP" = "$IP" ]; then
 fi
 
 LABEL=$(echo "$LINE" | cut -d'|' -f2)
+MODE=$(echo "$LINE" | cut -d'|' -f4)
 grep -v "^${IP}|" "$CONF" > "${CONF}.tmp" && mv "${CONF}.tmp" "$CONF"
-echo "${NEW_IP}|${LABEL}|${SRC}" >> "$CONF"
+LINE_NEW="${NEW_IP}|${LABEL}|${SRC}"
+[ -n "$MODE" ] && LINE_NEW="${LINE_NEW}|${MODE}"
+echo "$LINE_NEW" >> "$CONF"
 /usr/bin/warp-targets-apply.sh >/dev/null 2>&1
 echo "{\"ok\":true,\"message\":\"${SRC}: ${IP} -> ${NEW_IP}\"}"
