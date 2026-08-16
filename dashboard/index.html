@@ -41,6 +41,8 @@ th,td{text-align:left;padding:7px 8px;border-bottom:1px solid #21262d;font-size:
 th{color:#8b949e;font-weight:600}
 a{color:#58a6ff}
 #loginOverlay{position:fixed;inset:0;background:#0d1117f2;display:flex;align-items:center;justify-content:center;z-index:100}
+.modal{position:fixed;inset:0;background:#0d1117f2;display:flex;align-items:center;justify-content:center;z-index:90}
+.modal-box{width:min(480px,92vw);background:#161b22;border:1px solid #30363d;border-radius:8px;padding:20px}
 #loginBox{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:28px;width:320px;text-align:center}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#161b22;border:1px solid #30363d;border-radius:8px;padding:10px 18px;display:none;z-index:200;max-width:80%;box-shadow:0 4px 16px #0008}
 #toast.show{display:block}
@@ -160,9 +162,40 @@ a{color:#58a6ff}
 		</table>
 	</div>
 	<div class="card">
+		<h3>Правила вне управления</h3>
+		<p class="muted">Ручные правила (например, 90/100), которых нет в списке целей. «Взять под управление» — перенести в список целей: старое правило удалится, вместо него появится цель (режим WARP).</p>
+		<table>
+			<thead><tr><th>Приоритет</th><th>Правило</th><th></th></tr></thead>
+			<tbody id="um-table"><tr><td colspan="3" class="muted">загрузка...</td></tr></tbody>
+		</table>
+	</div>
+	<div class="card">
 		<h3>Все правила маршрутизации</h3>
 		<p class="muted">Полный список <code>ip rule</code> на роутере, включая ручные (90/100) и WholeLAN (80). Чем меньше номер — тем приоритетнее.</p>
 		<pre id="rules-all">-</pre>
+	</div>
+</div>
+
+<div id="edit-modal" class="modal" style="display:none">
+	<div class="modal-box card">
+		<h3>Изменить цель</h3>
+		<p class="muted">IP изменить нельзя — для этого «Убрать» и добавить заново.</p>
+		<label>IP</label>
+		<input type="text" id="ed-ip" disabled>
+		<label>Метка (латиница/цифры/дефис, до 32 символов)</label>
+		<input type="text" id="ed-label" maxlength="32">
+		<label>Источник (IP или домен)</label>
+		<input type="text" id="ed-src">
+		<label>Режим</label>
+		<select id="ed-mode">
+			<option value="warp">WARP</option>
+			<option value="byedpi">ByeDPI</option>
+			<option value="direct">Direct</option>
+		</select>
+		<div class="flexrow" style="margin-top:10px">
+			<button class="btn" onclick="saveEdit()">Сохранить</button>
+			<button class="btn grey" onclick="closeEdit()">Отмена</button>
+		</div>
 	</div>
 </div>
 
@@ -273,9 +306,58 @@ function renderTargets(list){
 		return '<tr><td>'+esc(t.ip)+'</td><td>'+esc(t.label)+'</td><td>'+esc(t.src)+'</td><td>'+mb+'</td>'+
 		'<td>'+(t.status==='active'?badge(true,'активна'):badge(false,'ожидает'))+'</td>'+
 		'<td><button class="btn grey" onclick="cycleMode(\''+t.ip+'\',\''+t.mode+'\')">Режим</button> '+
+		'<button class="btn grey" onclick="editTarget(\''+t.ip+'\')">Изменить</button> '+
 		'<button class="btn grey" onclick="refreshTarget(\''+t.ip+'\')">Обновить</button> '+
 		'<button class="btn red" onclick="removeTarget(\''+t.ip+'\')">Убрать</button></td></tr>'
 	}).join('');
+	renderUnmanaged();
+}
+
+function renderUnmanaged(){
+	const el=document.getElementById('um-table');
+	const managed=new Set((S.targets||[]).map(t=>t.ip));
+	const rows=[];
+	((S.rules_all||'').split('\n')).forEach(l=>{
+		const m=l.match(/^(\d+):\s+from (.+?) lookup (\w+)/);
+		if(!m)return;
+		const prio=+m[1],from=m[2],lookup=m[3];
+		if(prio<=70||prio===80||lookup!=='warp'||from.indexOf('/')>=0||managed.has(from))return;
+		rows.push('<tr><td>'+prio+'</td><td>'+esc(l)+'</td><td>'+
+			'<button class="btn grey" onclick="alert(decodeURIComponent(\''+encodeURIComponent(l)+'\'))">Показать</button> '+
+			'<button class="btn" onclick="adoptRule('+prio+')">Взять под управление</button></td></tr>');
+	});
+	el.innerHTML=rows.length?rows.join(''):'<tr><td colspan="3" class="muted">нет правил вне управления</td></tr>';
+}
+
+async function adoptRule(prio){
+	if(!confirm('Взять правило '+prio+' под управление?\n\nСтарое правило будет удалено, вместо него создастся цель (режим WARP).'))return;
+	const d=await fetchJSON(API+'/dash-target-adopt.sh?prio='+prio);
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+function editTarget(ip){
+	const t=(S.targets||[]).find(x=>x.ip===ip);
+	if(!t)return;
+	document.getElementById('ed-ip').value=t.ip;
+	document.getElementById('ed-label').value=t.label;
+	document.getElementById('ed-src').value=t.src;
+	document.getElementById('ed-mode').value=t.mode;
+	document.getElementById('edit-modal').style.display='flex';
+}
+
+function closeEdit(){
+	document.getElementById('edit-modal').style.display='none';
+}
+
+async function saveEdit(){
+	const ip=document.getElementById('ed-ip').value;
+	const label=document.getElementById('ed-label').value;
+	const src=document.getElementById('ed-src').value;
+	const mode=document.getElementById('ed-mode').value;
+	const d=await fetchJSON(API+'/dash-target-edit.sh?ip='+encodeURIComponent(ip)+'&label='+encodeURIComponent(label)+'&src='+encodeURIComponent(src)+'&mode='+mode);
+	toast(d.message||d.error);
+	if(d.ok){closeEdit();loadStatus()}
 }
 
 function cycleMode(ip,cur){
