@@ -163,7 +163,7 @@ a{color:#58a6ff}
 	</div>
 	<div class="card">
 		<h3>Правила вне управления</h3>
-		<p class="muted">Ручные правила (например, 90/100), которых нет в списке целей. «Взять под управление» — перенести в список целей: старое правило удалится, вместо него появится цель (режим WARP).</p>
+		<p class="muted">Ручные правила (например, 90/100), которых нет в списке целей. Можно редактировать/удалять прямо здесь или «взять под управление» — тогда старое правило удалится, вместо него появится цель (режим WARP).</p>
 		<table>
 			<thead><tr><th>Приоритет</th><th>Правило</th><th></th></tr></thead>
 			<tbody id="um-table"><tr><td colspan="3" class="muted">загрузка...</td></tr></tbody>
@@ -173,6 +173,28 @@ a{color:#58a6ff}
 		<h3>Все правила маршрутизации</h3>
 		<p class="muted">Полный список <code>ip rule</code> на роутере, включая ручные (90/100) и WholeLAN (80). Чем меньше номер — тем приоритетнее.</p>
 		<pre id="rules-all">-</pre>
+	</div>
+</div>
+
+<div id="rule-modal" class="modal" style="display:none">
+	<div class="modal-box card">
+		<h3>Изменить правило</h3>
+		<p class="muted">Приоритет 71-32767 (70 и 80 заняты системой). Таблица <code>warp</code> — туннель, <code>main</code> — обычная маршрутизация.</p>
+		<label>Текущий приоритет</label>
+		<input type="text" id="edr-prio" disabled>
+		<label>Новый приоритет</label>
+		<input type="text" id="edr-nprio">
+		<label>Источник (all или IP или IP/маска)</label>
+		<input type="text" id="edr-from">
+		<label>Таблица</label>
+		<select id="edr-lookup">
+			<option value="warp">warp</option>
+			<option value="main">main</option>
+		</select>
+		<div class="flexrow" style="margin-top:10px">
+			<button class="btn" onclick="saveRuleEdit()">Сохранить</button>
+			<button class="btn grey" onclick="closeRuleModal()">Отмена</button>
+		</div>
 	</div>
 </div>
 
@@ -324,6 +346,8 @@ function renderUnmanaged(){
 		if(prio<=70||prio===80||lookup!=='warp'||from.indexOf('/')>=0||managed.has(from))return;
 		rows.push('<tr><td>'+prio+'</td><td>'+esc(l)+'</td><td>'+
 			'<button class="btn grey" onclick="alert(decodeURIComponent(\''+encodeURIComponent(l)+'\'))">Показать</button> '+
+			'<button class="btn grey" onclick="editRule('+prio+',\''+encodeURIComponent(l)+'\')">Изменить</button> '+
+			'<button class="btn red" onclick="deleteRule('+prio+')">Удалить</button> '+
 			'<button class="btn" onclick="adoptRule('+prio+')">Взять под управление</button></td></tr>');
 	});
 	el.innerHTML=rows.length?rows.join(''):'<tr><td colspan="3" class="muted">нет правил вне управления</td></tr>';
@@ -332,6 +356,37 @@ function renderUnmanaged(){
 async function adoptRule(prio){
 	if(!confirm('Взять правило '+prio+' под управление?\n\nСтарое правило будет удалено, вместо него создастся цель (режим WARP).'))return;
 	const d=await fetchJSON(API+'/dash-target-adopt.sh?prio='+prio);
+	toast(d.message||d.error);
+	if(d.ok)loadStatus();
+}
+
+function editRule(prio,enc){
+	const l=decodeURIComponent(enc);
+	const m=l.match(/^(\d+):\s+from (.+?) lookup (\w+)/);
+	document.getElementById('edr-prio').value=prio;
+	document.getElementById('edr-nprio').value=prio;
+	document.getElementById('edr-from').value=m?m[2]:'all';
+	document.getElementById('edr-lookup').value=m&&m[3]==='main'?'main':'warp';
+	document.getElementById('rule-modal').style.display='flex';
+}
+
+function closeRuleModal(){
+	document.getElementById('rule-modal').style.display='none';
+}
+
+async function saveRuleEdit(){
+	const prio=document.getElementById('edr-prio').value;
+	const nprio=document.getElementById('edr-nprio').value;
+	const from=document.getElementById('edr-from').value;
+	const lookup=document.getElementById('edr-lookup').value;
+	const d=await fetchJSON(API+'/dash-rule-edit.sh?prio='+prio+'&nprio='+encodeURIComponent(nprio)+'&from='+encodeURIComponent(from)+'&lookup='+lookup);
+	toast(d.message||d.error);
+	if(d.ok){closeRuleModal();loadStatus()}
+}
+
+async function deleteRule(prio){
+	if(!confirm('Удалить правило '+prio+'?\n\nПравило пропадёт из маршрутизации навсегда (до перезагрузки правил вручную).'))return;
+	const d=await fetchJSON(API+'/dash-rule-delete.sh?prio='+prio);
 	toast(d.message||d.error);
 	if(d.ok)loadStatus();
 }
