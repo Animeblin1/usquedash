@@ -2,7 +2,7 @@
 set -e
 
 GITHUB_USER="Animeblin1"
-REPO_NAME="warp-byedpi-router"
+REPO_NAME="usquedash"
 BRANCH="main"
 
 MODE="${1:-}"

@@ -1,4 +1,4 @@
-# warp-byedpi-router
+# usquedash
 
 Поднимает на роутере (OpenWrt-совместимые прошивки, проверено на SNR-CPE) обход блокировок двумя слоями:
 
@@ -9,13 +9,13 @@
 ## Быстрая установка одной командой
 
 ```sh
-wget -qO- https://raw.githubusercontent.com/Animeblin1/warp-byedpi-router/main/install.sh | sh -s full
+wget -qO- https://raw.githubusercontent.com/Animeblin1/usquedash/main/install.sh | sh -s full
 ```
 
 (если на роутере есть `curl`):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Animeblin1/warp-byedpi-router/main/install.sh | sh -s full
+curl -fsSL https://raw.githubusercontent.com/Animeblin1/usquedash/main/install.sh | sh -s full
 ```
 
 Скрипт сам скачает пакет с GitHub, поставит всё и в конце напечатает адрес дашборда.
