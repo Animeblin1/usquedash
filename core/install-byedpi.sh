@@ -1,6 +1,19 @@
 #!/bin/sh
 set -e
-
+#
+# ByeDPI на весь LAN: десинхронизация TLS через два сервиса:
+#   - byedpi (порт 1080)       - SOCKS5, для ручных тестов: curl -x socks5://127.0.0.1:1080
+#   - byedpi-transparent (1081) - прозрачный режим, весь LAN-трафик tcp 443/80
+#     заворачивается цепочкой BYEDPI в nat PREROUTING
+#
+# Стратегия desync (флаги -d/-s/-r/-a и т.д.) описана в README, раздел
+# "ByeDPI: стратегии". Чтобы сменить стратегию вручную:
+#   1) Правь строку cmd_opts в /etc/config/byedpi (порт 1080) и аргументы
+#      запуска в /etc/init.d/byedpi-transparent (порт 1081)
+#   2) /etc/init.d/byedpi restart && /etc/init.d/byedpi-transparent restart
+#   3) Проверка: curl -x socks5://127.0.0.1:1080 -I https://ya.ru --max-time 10
+#      (ожидается HTTP/1.1 302 - туннель живой)
+#
 echo "=== [1/5] Скачиваем и ставим ByeDPI ==="
 cd /tmp
 URL=$(wget -qO- https://api.github.com/repos/DPITrickster/ByeDPI-OpenWrt/releases/latest \

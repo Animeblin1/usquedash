@@ -1,5 +1,18 @@
 #!/bin/sh
-
+#
+# Watchdog для usque: вызывается из cron каждую минуту.
+# Проверяет 3 признака живости тоннеля; при любом сбое перезапускает
+# /etc/init.d/usque и пишет метку времени в лог (для поиска закономерности падений).
+#
+# Ручная установка:
+#   cp usque-watchdog.sh /usr/bin/usque-watchdog.sh && chmod +x /usr/bin/usque-watchdog.sh
+#   echo '* * * * * /usr/bin/usque-watchdog.sh' >> /etc/crontabs/<имя_пользователя>
+#   /etc/init.d/cron restart
+#   (важно: имя файла в /etc/crontabs должно совпадать с реальным пользователем
+#    из /etc/passwd - на прошивках SNR-CPE это Admin, а НЕ root!)
+#
+# Лог падений: /var/log/usque-watchdog.log (пуст - падений не было)
+#
 LOG="/var/log/usque-watchdog.log"
 LOCK="/var/run/usque-watchdog.lock"
 

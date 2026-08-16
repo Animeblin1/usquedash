@@ -1,5 +1,21 @@
 #!/bin/sh
 set -e
+#
+# usquedash - универсальный установщик WARP (usque/MASQUE) + ByeDPI + веб-дашборд
+#
+# Ручной запуск:
+#   sh install.sh <full|byedpi|warp> [пароль_дашборда] [порт_дашборда]
+#
+# Переменные окружения (задаются ДО запуска, пример: WARP_SNI=ya.ru sh install.sh warp):
+#   WARP_SNI    - SNI-маскировка MASQUE-сессии (по умолчанию ya.ru)
+#   LAN_SUBNET  - подсеть LAN, напр. 192.168.1.0/24 (по умолчанию определяется сама)
+#   LAN_IFACE   - LAN-интерфейс, напр. br-lan (по умолчанию определяется сам)
+#   CLASH_FILE  - путь к Clash-конфигу WARP (warp-gen.github.io), импортируется при установке
+#
+# Автообнаружение: скрипт проверяет, что уже установлено (usque/ByeDPI/дашборд/watchdog)
+# и не переустанавливает найденное - только доустанавливает недостающее и обновляет скрипты.
+# Существующий /etc/usque/config.json и пароль дашборда НЕ перезаписываются.
+#
 
 GITHUB_USER="Animeblin1"
 REPO_NAME="usquedash"
@@ -51,6 +67,28 @@ if [ -z "$LAN_SUBNET" ]; then
 fi
 export WARP_SNI LAN_SUBNET LAN_IFACE
 
+# ---- автообнаружение уже установленных компонентов ----
+USQUE_PRESENT=0
+[ -x /usr/bin/usque ] && [ -f /etc/init.d/usque ] && USQUE_PRESENT=1
+USQUE_CONFIG=0
+[ -f /etc/usque/config.json ] && USQUE_CONFIG=1
+USQUE_RUNNING=0
+ps w | grep -q usqu[e] && USQUE_RUNNING=1
+BYEDPI_PRESENT=0
+[ -x /etc/init.d/byedpi ] && BYEDPI_PRESENT=1
+DASH_PRESENT=0
+[ -d /www-dashboard ] && DASH_PRESENT=1
+WATCHDOG_PRESENT=0
+grep -q usque-watchdog /etc/crontabs/* 2>/dev/null && WATCHDOG_PRESENT=1
+
+echo "=== Обнаружено на роутере ==="
+echo "  usque:      $([ "$USQUE_PRESENT" = "1" ] && echo 'установлен' || echo 'нет') $([ "$USQUE_RUNNING" = "1" ] && echo '(работает)' || echo '')"
+echo "  конфиг:     $([ "$USQUE_CONFIG" = "1" ] && echo 'есть (/etc/usque/config.json)' || echo 'НЕТ - нужен Clash-импорт')"
+echo "  ByeDPI:     $([ "$BYEDPI_PRESENT" = "1" ] && echo 'установлен' || echo 'нет')"
+echo "  дашборд:    $([ "$DASH_PRESENT" = "1" ] && echo 'установлен' || echo 'нет')"
+echo "  watchdog:   $([ "$WATCHDOG_PRESENT" = "1" ] && echo 'в cron' || echo 'не в cron')"
+echo ""
+
 WORKDIR="$(pwd)"
 if [ ! -d "${WORKDIR}/core" ] || [ ! -d "${WORKDIR}/dashboard" ]; then
 	echo "=== Файлов пакета рядом нет - скачиваю архив репозитория ==="
@@ -72,24 +110,40 @@ echo "Работаю из: ${WORKDIR}"
 case "$MODE" in
 	full)
 		echo "=== Режим FULL: ByeDPI (весь LAN) + ядро WARP (цели из дашборда) ==="
-		( cd core && sh install-byedpi.sh )
-		if [ -n "$CLASH_FILE" ]; then
-			sh core/import-clash.sh "$CLASH_FILE"
+		if [ "$BYEDPI_PRESENT" = "1" ]; then
+			echo "ByeDPI уже установлен - переношу без переустановки (конфиг не трогаю)."
+		else
+			( cd core && sh install-byedpi.sh )
 		fi
-		( cd core && sh install-usque-core.sh )
+		if [ "$USQUE_PRESENT" = "1" ] && [ "$USQUE_CONFIG" = "1" ]; then
+			echo "usque уже установлен и настроен - переношу без переустановки."
+		else
+			if [ -n "$CLASH_FILE" ]; then
+				sh core/import-clash.sh "$CLASH_FILE"
+			fi
+			( cd core && sh install-usque-core.sh )
+		fi
 		NEED_WATCHDOG=1
 		;;
 	byedpi)
 		echo "=== Режим BYEDPI: только ByeDPI на весь LAN ==="
-		( cd core && sh install-byedpi.sh )
+		if [ "$BYEDPI_PRESENT" = "1" ]; then
+			echo "ByeDPI уже установлен - переношу без переустановки."
+		else
+			( cd core && sh install-byedpi.sh )
+		fi
 		NEED_WATCHDOG=0
 		;;
 	warp)
 		echo "=== Режим WARP: только WARP на весь LAN ==="
-		if [ -n "$CLASH_FILE" ]; then
-			sh core/import-clash.sh "$CLASH_FILE"
+		if [ "$USQUE_PRESENT" = "1" ] && [ "$USQUE_CONFIG" = "1" ]; then
+			echo "usque уже установлен и настроен - переношу без переустановки."
+		else
+			if [ -n "$CLASH_FILE" ]; then
+				sh core/import-clash.sh "$CLASH_FILE"
+			fi
+			( cd core && sh install-usque-wholelan.sh )
 		fi
-		( cd core && sh install-usque-wholelan.sh )
 		NEED_WATCHDOG=1
 		;;
 esac

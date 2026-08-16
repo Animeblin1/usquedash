@@ -1,6 +1,22 @@
 #!/bin/sh
 set -e
-
+#
+# WARP на ВЕСЬ LAN: весь трафик подсети уходит в туннель usque (tun0).
+# Отличие от install-usque-core.sh: добавляется policy-правило
+# "from <подсеть> lookup warp priority 80" - всё, что не попало под
+# более приоритетные правила (150-199, цели из дашборда), идёт в WARP.
+#
+# Ручная установка (вместо этого скрипта):
+#   1) Бинарник:   cp usque-mipsel /usr/bin/usque && chmod +x /usr/bin/usque
+#   2) Конфиг:     mkdir -p /etc/usque && cp config.json /etc/usque/config.json
+#   3) TUN:        opkg install kmod-tun && insmod tun
+#   4) Задать SNI/подсеть/интерфейс ниже и создать /etc/init.d/usque (генератор ниже)
+#   5) /etc/init.d/usque enable && /etc/init.d/usque start
+#   6) Проверка:   ip route show table warp  (должен быть default dev tun0)
+#                  ip rule | grep warp       (80: from <подсеть> lookup warp)
+#
+# Переменные окружения: WARP_SNI, LAN_SUBNET, LAN_IFACE (см. install-usque-core.sh)
+#
 SNI="${WARP_SNI:-ya.ru}"
 LAN_SUBNET="${LAN_SUBNET:-192.168.1.0/24}"
 LAN_IFACE="${LAN_IFACE:-br-lan}"

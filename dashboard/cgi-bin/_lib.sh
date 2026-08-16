@@ -1,5 +1,5 @@
 json_escape() {
-	sed -e ':a;N;$!ba' -e 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g'
+	sed -e ':a;N;$!ba' -e 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g' | tr '\r\t' '  '
 }
 
 HASH_FILE="/etc/dashboard-password.hash"

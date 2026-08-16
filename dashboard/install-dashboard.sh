@@ -1,6 +1,26 @@
 #!/bin/sh
 set -e
-
+#
+# Установка веб-дашборда: отдельный экземпляр uhttpd на своём порту,
+# LuCI на 80-м порту не трогается.
+#
+# Ручная установка:
+#   sh install-dashboard.sh [порт] [пароль]
+#   (пароль можно не передавать - спросит, либо сгенерирует случайный)
+#
+# Что делает:
+#   1) копирует index.html и CGI-скрипты в /www-dashboard/cgi-bin
+#   2) кладёт /usr/bin/import-clash.sh, /usr/bin/warp-targets-apply.sh,
+#      /etc/init.d/warp-targets (автозагрузка целей) и создаёт
+#      /etc/warp-targets.conf (список целей) и /etc/dashboard-backups/
+#   3) пароль: md5-хэш в /etc/dashboard-password.hash (plaintext не хранится);
+#      если файл уже есть - старый пароль сохраняется
+#   4) uci-секцию uhttpd.dashboard (порт по умолчанию 1623) + restart uhttpd
+#   5) автозагрузка warp-targets + cron переприменения целей раз в 5 минут
+#      (в /etc/crontabs/<реальный_пользователь> - на SNR-CPE это Admin, не root!)
+#
+# Смена пароля позже: sh install-dashboard.sh 1623 НОВЫЙ_ПАРОЛЬ
+#
 PORT="${1:-1623}"
 PASSWORD_ARG="${2:-}"
 WWW_ROOT="/www-dashboard"

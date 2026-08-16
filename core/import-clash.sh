@@ -1,6 +1,17 @@
 #!/bin/sh
 set -e
-
+#
+# Конвертер Clash-конфига WARP (warp-gen.github.io, раздел Clash, тип Masque)
+# в /etc/usque/config.json для usque.
+#
+# Ручное использование:
+#   sh import-clash.sh /путь/к/ClashWARP_93.yaml
+#
+# Что извлекается из yaml:
+#   private-key -> private_key;  public-key -> endpoint_pub_key (заворачивается в PEM);
+#   ip -> ipv4;  ipv6 -> ipv6;  server -> endpoint_v4;  sni -> SNI в /etc/init.d/usque
+# Если в yaml нет server/ip/ipv6 - подставляются значения по умолчанию ниже.
+#
 FILE="${1:-}"
 [ -f "$FILE" ] || { echo "ОШИБКА: файл не найден: ${FILE}"; exit 1; }
 

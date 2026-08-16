@@ -1,6 +1,24 @@
 #!/bin/sh
 set -e
-
+#
+# Ядро WARP (usque/MASQUE): tun0 + таблица маршрутизации warp.
+# Трафик пойдёт через WARP только для целей, добавленных в дашборде
+# (вкладка WARP-цели) или в /etc/warp-targets.conf.
+#
+# Ручная установка (вместо этого скрипта, шаг за шагом):
+#   1) Положить бинарник:        cp usque-mipsel /usr/bin/usque && chmod +x /usr/bin/usque
+#   2) Конфиг ключей:            mkdir -p /etc/usque && cp config.json /etc/usque/config.json
+#      (или импорт Clash:        sh import-clash.sh /tmp/ClashWARP_93.yaml)
+#   3) Модуль TUN:               opkg install kmod-tun && insmod tun
+#   4) Настройки ниже (SNI/подсеть/интерфейс) - под свой роутер
+#   5) Создать /etc/init.d/usque (генерируется ниже), затем:
+#      /etc/init.d/usque enable && /etc/init.d/usque start
+#
+# Переменные (можно задать из окружения: WARP_SNI=... LAN_SUBNET=... sh install-usque-core.sh):
+#   WARP_SNI    - SNI-маскировка MASQUE-сессии (по умолчанию ya.ru)
+#   LAN_SUBNET  - подсеть LAN, например 192.168.1.0/24
+#   LAN_IFACE   - LAN-интерфейс, обычно br-lan
+#
 SNI="${WARP_SNI:-ya.ru}"
 LAN_SUBNET="${LAN_SUBNET:-192.168.1.0/24}"
 LAN_IFACE="${LAN_IFACE:-br-lan}"

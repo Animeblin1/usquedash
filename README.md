@@ -79,6 +79,128 @@ sh install.sh <режим> [пароль_дашборда] [порт_дашбо�
 - **Бэкапы** — создание/скачивание/восстановление/удаление архивов конфигов (ключи WARP, init-скрипты, цели, cron, iptables)
 - **Clash-конфиг** — импорт yaml с warp-gen.github.io прямо в браузер
 
+## Установка вручную (без скрипта)
+
+Всё то же самое можно сделать руками — скрипты идемпотентны, порядок шагов не важен. В каждом скрипте есть комментарии с пояснениями для ручной настройки.
+
+```sh
+# 0. Модуль TUN (нужен для WARP)
+opkg update && opkg install kmod-tun
+insmod tun
+mkdir -p /dev/net && [ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+
+# 1. WARP: бинарник + ключи + ядро (цели из дашборда)
+cp core/usque-mipsel /usr/bin/usque && chmod +x /usr/bin/usque
+mkdir -p /etc/usque
+sh core/import-clash.sh /tmp/ClashWARP_93.yaml    # ключи из Clash-конфига warp-gen
+# или вручную: cp core/config.json.example /etc/usque/config.json и заполни ключи
+sh core/install-usque-core.sh                      # создаст /etc/init.d/usque и стартует
+
+# 1b. ИЛИ WARP на ВЕСЬ LAN (вместо п.1):
+sh core/install-usque-wholelan.sh
+
+# 2. ByeDPI (десинхронизация на весь LAN)
+sh core/install-byedpi.sh
+
+# 3. Watchdog (авторестарт тоннеля при падении)
+cp core/usque-watchdog.sh /usr/bin/usque-watchdog.sh && chmod +x /usr/bin/usque-watchdog.sh
+echo '* * * * * /usr/bin/usque-watchdog.sh' >> /etc/crontabs/Admin   # имя файла = реальный
+/etc/init.d/cron restart                                              # пользователь из /etc/passwd!
+
+# 4. Дашборд на порту 1623 с паролем
+cd dashboard && sh install-dashboard.sh 1623 мой_пароль
+
+# 5. Цели WARP (IP или домен; домен резолвится автоматически)
+echo "192.168.1.50|ТВ|192.168.1.50" >> /etc/warp-targets.conf
+sh /usr/bin/warp-targets-apply.sh
+
+# Откат любого шага:
+/etc/init.d/usque stop && /etc/init.d/usque disable
+/etc/init.d/byedpi stop && /etc/init.d/byedpi disable
+ip rule flush table warp; iptables -t nat -F BYEDPI
+```
+
+## Маршрутизация: что куда идёт
+
+Три пути трафика из LAN, в зависимости от установленных компонентов:
+
+| Компонент | Трафик | Механизм |
+|---|---|---|
+| WARP-цели (дашборд) | только IP/домены из `/etc/warp-targets.conf` | `ip rule` 150-199 → таблица `warp` → tun0 |
+| WARP wholelan | весь LAN | `ip rule` priority 80: `from <LAN_SUBNET> lookup warp` |
+| ByeDPI | весь LAN, tcp 443/80 | `nat PREROUTING` цепочка `BYEDPI` → REDIRECT на 1081 |
+| Ничего из выше | прямой интернет | обычная маршрутизация `main` |
+
+Порядок обработки пакета из LAN (важно для понимания):
+
+1. **nat PREROUTING**: если адрес источника = WARP-цель (или вся подсеть в режиме wholelan) — `RETURN`, мимо ByeDPI. Это исключение вставляется позицией 2, до цепочки `BYEDPI`.
+2. Иначе, если `tcp 443/80` — `REDIRECT` в ByeDPI (1081): пакет десинхронизируется и дальше идёт обычным путём.
+3. **Решение о маршрутизации** (`ip rule`, проверяются от меньшего приоритета к большему):
+   - 150-199 — цель из дашборда → таблица `warp` → **WARP**;
+   - 80 — wholelan → таблица `warp` → **WARP**;
+   - иначе — таблица `main` → **прямой WAN**.
+4. FORWARD/POSTROUTING: MASQUERADE на tun0.
+
+Важные следствия:
+
+- **В режиме wholelan ByeDPI фактически не работает** — весь LAN-трафик исключён из REDIRECT и уходит в WARP. ByeDPI имеет смысл в режиме `full` (ядро WARP + цели): сайты вне списка целей идут напрямую, но с десинхронизацией.
+- Сам тоннель usque ходит на `162.159.198.2:443` **с роутера** (не из LAN), поэтому в ByeDPI-редирект не попадает и не зацикливается.
+- WARP-трафик внутри туннеля уже зашифрован (MASQUE) — второй прогон через ByeDPI не нужен.
+- Правила 90/100 (ручные, из старых экспериментов) установщик не трогает.
+- `ip rule` применяется к новым соединениям — старые открытые пойдут по старому пути до закрытия.
+
+## ByeDPI: стратегии, тесты, фоллбэк
+
+ByeDPI ставит два сервиса:
+- `byedpi` (порт **1080**) — SOCKS5, для тестов стратегии;
+- `byedpi-transparent` (порт **1081**) — прозрачный, в него REDIRECTит iptables.
+
+**Флаги стратегии** (одинаковые в обоих сервисах):
+
+| Флаг | Смысл |
+|---|---|
+| `-d N+s` | фейковый сегмент после N-го пакета данных, `+s` — с разбиением |
+| `-s N+s` | разбить N-й пакет на части (запутывает DPI-анализ потока) |
+| `-r N+s` | отправить N пакетов в обратном порядке |
+| `-S` | фейковый SACK в служебных опциях TCP |
+| `-a N` | фейковый ACK после N-го сегмента |
+| `-E -D` | служебные (фрагментация исходящих и т.п.) — не трогай без необходимости |
+
+**Тест стратегии** (с роутера, порт 1080):
+
+```sh
+curl -x socks5://127.0.0.1:1080 -I https://ya.ru --max-time 10
+curl -x socks5://127.0.0.1:1080 -I https://youtube.com --max-time 10
+```
+
+Ожидается `HTTP/1.1 302` (или 200) — туннель живой. Сравни с прямым запросом без `-x`.
+
+**Смена стратегии** (например, если сайт не открывается или скорость просела):
+
+1. Правь строку `option cmd_opts` в `/etc/config/byedpi` (порт 1080) и аргументы запуска в `/etc/init.d/byedpi-transparent` (порт 1081).
+2. Перезапуск:
+```sh
+/etc/init.d/byedpi restart && /etc/init.d/byedpi-transparent restart
+```
+3. Повтори тест из пункта выше.
+
+**Готовые стратегии для перебора** (по возрастанию агрессивности):
+
+| # | Флаги |
+|---|---|
+| A (по умолчанию) | `-d1 -d3+s -s6+s -d9+s -s12+s -d15+s -s20+s -d25+s -s30+s -d35+s -r1+s -S -a1` |
+| B | `-d2 -d4+s -s6+s -d9+s -d12+s -d15+s -s20+s -d25+s -d30+s -d35+s -r2+s -S -a1` |
+| C (минимальная) | `-d1 -d3+s -s6+s -d9+s -r1+s -S -a1` |
+
+**Фоллбэк** — если ByeDPI мешает (сайт перестал открываться вообще) или стратегия не подходит:
+
+```sh
+/etc/init.d/byedpi stop && /etc/init.d/byedpi-transparent stop
+iptables -t nat -F BYEDPI
+```
+
+WARP при этом продолжает работать — сайты из списка целей идут через туннель, остальные напрямую.
+
 ## Watchdog
 
 `usque` на слабых роутерах умирает молча (без записей в лог). `/usr/bin/usque-watchdog.sh` по крону раз в минуту проверяет процесс, `tun0` и маршрут в таблице `warp`; при падении перезапускает тоннель и пишет в `/var/log/usque-watchdog.log`.

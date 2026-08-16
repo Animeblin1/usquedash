@@ -6,7 +6,7 @@ echo ""
 
 NOW=$(date '+%Y-%m-%d %H:%M:%S')
 UPTIME=$(uptime | sed 's/^[^,]*up *//; s/,.*//' | json_escape)
-MEM=$(free -m | awk 'NR==2{printf "used %sMB / total %sMB / available %sMB", $3, $2, $7}' | json_escape)
+MEM=$(free | awk 'NR==2{printf "used %dMB / total %dMB / available %dMB", $3/1024, $2/1024, $7/1024}' | json_escape)
 OVERLAY=$(df -h /overlay 2>/dev/null | awk 'NR==2{print $3" used / "$4" free / "$5" full"}' | json_escape)
 
 USQUE_PID=$(ps w | grep usqu[e] | awk '{print $1}' | head -1)
