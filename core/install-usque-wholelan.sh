@@ -77,18 +77,33 @@ start() {
 	insmod tun 2>/dev/null
 	mkdir -p /dev/net
 	[ -c /dev/net/tun ] || mknod /dev/net/tun c 10 200
+	if [ -f /var/run/usque.pid ] && kill -0 \$(cat /var/run/usque.pid 2>/dev/null) 2>/dev/null; then
+		return 0
+	fi
+	rm -f /var/run/usque.pid
 
 	/usr/bin/usque nativetun -c /etc/usque/config.json -s \${SNI} > /var/log/usque-tun.log 2>&1 &
 	echo \$! > /var/run/usque.pid
 
 	for i in \$(seq 1 15); do
+		kill -0 \$(cat /var/run/usque.pid 2>/dev/null) 2>/dev/null || break
 		[ -e /sys/class/net/tun0 ] && break
 		sleep 1
 	done
+	if [ ! -e /sys/class/net/tun0 ]; then
+		echo "usque не поднял tun0; см. /var/log/usque-tun.log" >&2
+		return 1
+	fi
 
 	grep -q "^200 warp" /etc/iproute2/rt_tables || echo "200 warp" >> /etc/iproute2/rt_tables
 	ip route add default dev tun0 table warp 2>/dev/null
 	ip route add \${LAN_SUBNET} dev \${LAN_IFACE} table warp 2>/dev/null
+
+	# Keep only dashboard-managed routing. Older installers added a fixed
+	# 192.168.1.210 rule at priority 100, which duplicates configured targets.
+	while ip rule show 2>/dev/null | grep -q "^100:.*from 192\\.168\\.1\\.210 .*lookup warp"; do
+		ip rule del from 192.168.1.210 table warp priority 100 2>/dev/null || break
+	done
 	if [ "\$(cat /etc/warp-wholelan 2>/dev/null)" != "0" ]; then
 		ip rule del from \${LAN_SUBNET} table warp priority \${PRIORITY} 2>/dev/null
 		ip rule add from \${LAN_SUBNET} table warp priority \${PRIORITY}
@@ -106,6 +121,9 @@ start() {
 }
 
 stop() {
+	while ip rule show 2>/dev/null | grep -q "^100:.*from 192\\.168\\.1\\.210 .*lookup warp"; do
+		ip rule del from 192.168.1.210 table warp priority 100 2>/dev/null || break
+	done
 	ip rule del from \${LAN_SUBNET} table warp priority \${PRIORITY} 2>/dev/null
 	iptables -t nat -D PREROUTING -s \${LAN_SUBNET} -j RETURN 2>/dev/null
 	ip rule show 2>/dev/null | grep -E "^75:|priority 75" | awk '{print $3}' | while read -r R; do
@@ -122,6 +140,7 @@ stop() {
 	done
 	ip route flush table warp 2>/dev/null
 	[ -f /var/run/usque.pid ] && kill \$(cat /var/run/usque.pid) 2>/dev/null
+	rm -f /var/run/usque.pid
 	ip link delete tun0 2>/dev/null
 }
 SCRIPT

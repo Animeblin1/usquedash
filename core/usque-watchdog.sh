@@ -44,10 +44,11 @@ if [ "$BAD" = "1" ]; then
 	echo "$(date '+%Y-%m-%d %H:%M:%S') ПАДЕНИЕ: ${REASON} (аптайм: ${UP}) - перезапускаю usque" >> "$LOG"
 	/etc/init.d/usque restart >/dev/null 2>&1
 	sleep 5
-	if ip link show tun0 >/dev/null 2>&1 && ip route show table warp | grep -q "default dev tun0"; then
+	if ps w | grep -q usqu[e] && ip link show tun0 >/dev/null 2>&1 && ip route show table warp | grep -q "default dev tun0"; then
 		echo "$(date '+%Y-%m-%d %H:%M:%S') рестарт успешен, tun0 поднялся" >> "$LOG"
 	else
-		echo "$(date '+%Y-%m-%d %H:%M:%S') ВНИМАНИЕ: рестарт не помог, tun0 всё ещё не поднялся - нужна ручная проверка" >> "$LOG"
+		LAST_ERROR=$(tail -1 /var/log/usque-tun.log 2>/dev/null | tr '\r\n' ' ')
+		echo "$(date '+%Y-%m-%d %H:%M:%S') ВНИМАНИЕ: рестарт не помог, tun0 всё ещё не поднялся: ${LAST_ERROR:-лог пуст}" >> "$LOG"
 	fi
 fi
 
